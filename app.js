@@ -1122,6 +1122,7 @@ const appState = {
   edit: { tool: 'view', color: 0, undo: [], redo: [], stroke: null, renderQueued: false }
 };
 const MAX_HISTORY = 100;
+const EMPTY_CELL = 255; // a cell with no bead (palette indices never reach 255)
 
 const dataControls = [
   elements.fileInput, elements.boardSize, elements.customWidth, elements.customHeight,
@@ -1289,7 +1290,7 @@ function getViewOptions() {
 function isEdited() { return appState.edit.undo.length > 0; }
 
 function markDataStale() {
-  if (!appState.grid) return;
+  if (!appState.grid || (appState.grid.pattern && !appState.image)) return;
   appState.dataStale = true;
   elements.resultSection.classList.add('is-stale');
   setMessage('resultStatus', isEdited() ? 'staleEditedMessage' : 'staleMessage');
@@ -1397,6 +1398,12 @@ function usedEntries(grid) {
   return entries;
 }
 
+function beadTotal(grid) {
+  let total = 0;
+  for (let index = 0; index < grid.counts.length; index++) total += grid.counts[index];
+  return total;
+}
+
 function luminance(hex) {
   const [r, g, b] = hexToRgb(hex);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
@@ -1416,9 +1423,14 @@ function drawGrid(ctx, grid, settings, scale, originX, originY, bounds) {
   for (let y = bounds.y; y < bounds.y + bounds.h; y++) {
     for (let x = bounds.x; x < bounds.x + bounds.w; x++) {
       const paletteIndex = grid.indices[y * grid.w + x];
-      const color = grid.palette[paletteIndex];
       const left = (x - bounds.x) * cell;
       const top = (y - bounds.y) * cell;
+      if (paletteIndex === EMPTY_CELL) {
+        ctx.beginPath(); ctx.arc(left + cell / 2, top + cell / 2, cell * 0.12, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fill();
+        continue;
+      }
+      const color = grid.palette[paletteIndex];
       if (settings.shape === 'circle') {
         ctx.beginPath(); ctx.arc(left + cell / 2, top + cell / 2, cell * 0.42, 0, Math.PI * 2);
         ctx.fillStyle = color.hex; ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 0.5; ctx.stroke();
@@ -1486,7 +1498,7 @@ function renderLegend() {
 function renderStatistics() {
   if (!appState.grid) return;
   const grid = appState.grid;
-  elements.beadCount.textContent = tr('stats', { w: grid.w, h: grid.h, total: grid.w * grid.h, colors: usedEntries(grid).length, brand: grid.brand });
+  elements.beadCount.textContent = tr('stats', { w: grid.w, h: grid.h, total: beadTotal(grid), colors: usedEntries(grid).length, brand: grid.brand });
 }
 
 function renderAll() { renderBeads(); renderLegend(); renderStatistics(); }
@@ -1554,8 +1566,8 @@ function resetEditHistory(grid) {
 function setCell(grid, cellIndex, colorIndex) {
   const previous = grid.indices[cellIndex];
   if (previous === colorIndex) return previous;
-  grid.counts[previous]--;
-  grid.counts[colorIndex]++;
+  if (previous !== EMPTY_CELL) grid.counts[previous]--;
+  if (colorIndex !== EMPTY_CELL) grid.counts[colorIndex]++;
   grid.indices[cellIndex] = colorIndex;
   return previous;
 }
@@ -1579,7 +1591,7 @@ function scheduleBeadRender() {
 function paintStrokeCell(cellIndex) {
   const stroke = appState.edit.stroke;
   if (!stroke || cellIndex < 0) return;
-  const previous = setCell(appState.grid, cellIndex, appState.edit.color);
+  const previous = setCell(appState.grid, cellIndex, stroke.color);
   if (!stroke.changes.has(cellIndex)) stroke.changes.set(cellIndex, previous);
 }
 
@@ -1659,12 +1671,15 @@ function onCanvasPointerDown(event) {
   if (cellIndex < 0) return;
   event.preventDefault();
   if (tool === 'picker') {
-    setPaintColor(appState.grid.indices[cellIndex]);
+    const picked = appState.grid.indices[cellIndex];
+    if (picked === EMPTY_CELL) { setTool('eraser'); return; }
+    setPaintColor(picked);
     setTool('pen');
   } else if (tool === 'fill') {
     floodFill(cellIndex);
-  } else if (tool === 'pen') {
-    appState.edit.stroke = { changes: new Map(), last: cellIndex, pointerId: event.pointerId };
+  } else if (tool === 'pen' || tool === 'eraser') {
+    const color = tool === 'eraser' ? EMPTY_CELL : appState.edit.color;
+    appState.edit.stroke = { changes: new Map(), last: cellIndex, pointerId: event.pointerId, color };
     try { elements.beadCanvas.setPointerCapture(event.pointerId); } catch (_) {}
     paintStrokeCell(cellIndex);
     scheduleBeadRender();
@@ -1695,7 +1710,7 @@ function bindEditEvents() {
     const item = event.target.closest('.legend-item');
     if (!item || isBusy()) return;
     setPaintColor(Number(item.dataset.index));
-    if (appState.edit.tool === 'view' || appState.edit.tool === 'picker') setTool('pen');
+    if (appState.edit.tool !== 'pen' && appState.edit.tool !== 'fill') setTool('pen');
   });
   elements.undoBtn.addEventListener('click', undoEdit);
   elements.redoBtn.addEventListener('click', redoEdit);
@@ -1828,7 +1843,7 @@ function createPdfSummaryCanvas(grid, snapshot) {
     if (isFirstPage) {
       ctx.font = '700 44px sans-serif'; ctx.fillText(snapshot.text('pdfTitle'), margin, 100);
       ctx.font = '24px sans-serif';
-      drawWrappedText(ctx, snapshot.text('stats', { w: grid.w, h: grid.h, total: grid.w * grid.h, colors: entries.length, brand: grid.brand }), margin, 148, canvas.width - margin * 2, 34);
+      drawWrappedText(ctx, snapshot.text('stats', { w: grid.w, h: grid.h, total: beadTotal(grid), colors: entries.length, brand: grid.brand }), margin, 148, canvas.width - margin * 2, 34);
       ctx.font = '700 30px sans-serif'; ctx.fillText(snapshot.text('colorList'), margin, 230);
     } else {
       ctx.font = '700 34px sans-serif'; ctx.fillText(snapshot.text('colorList'), margin, 100);
@@ -1933,6 +1948,49 @@ function bindEvents() {
 
 bindEvents();
 bindEditEvents();
+async function loadPatternFromUrl() {
+  let slug = null;
+  try { slug = new URLSearchParams(window.location.search).get('pattern'); } catch (_) {}
+  if (!slug) return;
+  try {
+    if (!/^[a-z0-9-]{1,60}$/.test(slug)) throw appError('errorPatternLoad');
+    const response = await fetch(`patterns/${slug}.json`);
+    if (!response.ok) throw appError('errorPatternLoad');
+    const data = await response.json();
+    const palette = BRAND_PALETTES[data.brand];
+    const w = Number(data.w), h = Number(data.h);
+    if (!palette || !Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w > MAX_GRID_SIDE || h > MAX_GRID_SIDE || !Array.isArray(data.rows) || data.rows.length !== h) throw appError('errorPatternLoad');
+    const byCode = new Map(palette.map((entry, index) => [entry.code, index]));
+    const indices = new Uint8Array(w * h).fill(EMPTY_CELL);
+    const counts = new Uint32Array(palette.length);
+    data.rows.forEach((row, y) => {
+      if (!Array.isArray(row) || row.length !== w) throw appError('errorPatternLoad');
+      row.forEach((code, x) => {
+        if (code == null) return;
+        const index = byCode.get(code);
+        if (index == null) throw appError('errorPatternLoad');
+        indices[y * w + x] = index;
+        counts[index]++;
+      });
+    });
+    if (appState.grid) return;
+    const grid = { w, h, indices, counts, palette, brand: data.brand, options: { w, h, brand: data.brand }, pattern: String(data.name || slug) };
+    elements.brand.value = data.brand;
+    appState.grid = grid;
+    appState.dataStale = false;
+    appState.view.zoom = Math.min(2, Math.max(1, 32 / Math.max(w, h)));
+    resetEditHistory(grid);
+    elements.resultSection.hidden = false;
+    renderAll();
+    populatePaintColors();
+    setPaintColor(appState.edit.color);
+    setMessage('resultStatus', 'patternLoaded', { name: grid.pattern });
+    syncControls();
+  } catch (error) {
+    setMessage('uploadError', errorKey(error, 'errorPatternLoad'), null, true);
+  }
+}
+
 (function applyBrandFromUrl() {
   try {
     const brand = new URLSearchParams(window.location.search).get('brand');
@@ -1941,3 +1999,4 @@ bindEditEvents();
 })();
 updateCustomSizeVisibility();
 syncControls();
+loadPatternFromUrl();
