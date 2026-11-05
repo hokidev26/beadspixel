@@ -1103,8 +1103,10 @@ const elements = {
   beadShape: $('beadShape'), showGrid: $('showGrid'), showSymbols: $('showSymbols'), highlightLines: $('highlightLines'),
   highlightVal: $('highlightVal'), convertBtn: $('convertBtn'), resultSection: $('resultSection'),
   resultStatus: $('resultStatus'), beadCanvas: $('beadCanvas'), legendItems: $('legendItems'), beadCount: $('beadCount'),
-  zoomIn: $('zoomIn'), zoomOut: $('zoomOut'), downloadPng: $('downloadPng'), downloadPdf: $('downloadPdf')
+  zoomIn: $('zoomIn'), zoomOut: $('zoomOut'), downloadPng: $('downloadPng'), downloadPdf: $('downloadPdf'),
+  editToolbar: $('editToolbar'), paintColor: $('paintColor'), paintSwatch: $('paintSwatch'), undoBtn: $('undoBtn'), redoBtn: $('redoBtn')
 };
+const toolButtons = Array.from(document.querySelectorAll('[data-tool]'));
 
 const appState = {
   image: null,
@@ -1116,8 +1118,10 @@ const appState = {
   dataStale: false,
   operations: { upload: false, convert: false, png: false, pdf: false },
   messages: { uploadStatus: null, uploadError: null, resultStatus: null },
-  view: { zoom: 1, shape: 'circle', showGrid: true, showSymbols: false, highlight: 10 }
+  view: { zoom: 1, shape: 'circle', showGrid: true, showSymbols: false, highlight: 10 },
+  edit: { tool: 'view', color: 0, undo: [], redo: [], stroke: null, renderQueued: false }
 };
+const MAX_HISTORY = 100;
 
 const dataControls = [
   elements.fileInput, elements.boardSize, elements.customWidth, elements.customHeight,
@@ -1158,8 +1162,13 @@ function syncControls() {
   const busy = isBusy();
   const pdfBusy = appState.operations.pdf;
   elements.convertBtn.disabled = busy || !appState.image;
-  elements.downloadPng.disabled = busy || !appState.grid || appState.dataStale;
-  elements.downloadPdf.disabled = busy || !appState.grid || appState.dataStale;
+  const exportBlocked = !appState.grid || (appState.dataStale && !isEdited());
+  elements.downloadPng.disabled = busy || exportBlocked;
+  elements.downloadPdf.disabled = busy || exportBlocked;
+  toolButtons.forEach((button) => { button.disabled = busy; });
+  elements.paintColor.disabled = busy || !appState.grid;
+  elements.undoBtn.disabled = busy || !appState.edit.undo.length;
+  elements.redoBtn.disabled = busy || !appState.edit.redo.length;
   dataControls.forEach((control) => { control.disabled = busy; });
   elements.uploadArea.setAttribute('aria-disabled', String(busy));
   viewControls.forEach((control) => { control.disabled = pdfBusy; });
@@ -1277,11 +1286,13 @@ function getViewOptions() {
   };
 }
 
+function isEdited() { return appState.edit.undo.length > 0; }
+
 function markDataStale() {
   if (!appState.grid) return;
   appState.dataStale = true;
   elements.resultSection.classList.add('is-stale');
-  setMessage('resultStatus', 'staleMessage');
+  setMessage('resultStatus', isEdited() ? 'staleEditedMessage' : 'staleMessage');
   syncControls();
 }
 
@@ -1350,6 +1361,7 @@ async function convert() {
     setMessage('uploadError', errorKey(error, 'errorGridSize'), null, true);
     return;
   }
+  if (isEdited() && !window.confirm(tr('confirmReconvert'))) return;
   const imageSnapshot = appState.image;
   const revisionSnapshot = appState.dataRevision;
   const conversionToken = ++appState.conversionToken;
@@ -1362,9 +1374,12 @@ async function convert() {
     appState.grid = grid;
     appState.dataStale = false;
     appState.view.zoom = 1;
+    resetEditHistory(grid);
     elements.resultSection.hidden = false;
     elements.resultSection.classList.remove('is-stale');
     renderAll();
+    populatePaintColors();
+    setPaintColor(appState.edit.color);
     setMessage('resultStatus', 'convertComplete');
     elements.resultSection.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   } catch (error) {
@@ -1456,7 +1471,11 @@ function renderLegend() {
   if (!appState.grid) return;
   elements.legendItems.replaceChildren();
   usedEntries(appState.grid).forEach((entry, index) => {
-    const item = document.createElement('div'); item.className = 'legend-item';
+    const item = document.createElement('button'); item.type = 'button'; item.className = 'legend-item';
+    item.dataset.index = String(entry.index);
+    item.classList.toggle('is-selected', entry.index === appState.edit.color);
+    item.setAttribute('aria-pressed', String(entry.index === appState.edit.color));
+    item.title = tr('legendPickHint');
     const swatch = document.createElement('span'); swatch.className = 'legend-swatch'; swatch.style.backgroundColor = entry.hex;
     const code = document.createElement('strong'); code.className = 'legend-symbol'; code.textContent = entry.code;
     const details = document.createElement('span'); details.textContent = `${entry.name} (${SYMBOLS[index % SYMBOLS.length]}) ×${entry.count}`;
@@ -1472,9 +1491,232 @@ function renderStatistics() {
 
 function renderAll() { renderBeads(); renderLegend(); renderStatistics(); }
 
+// ===== Manual pattern editing =====
+function paletteLabel(entry) {
+  return entry.name && entry.name !== entry.code ? `${entry.code} ${entry.name}` : entry.code;
+}
+
+function populatePaintColors() {
+  const grid = appState.grid;
+  if (!grid) return;
+  const select = elements.paintColor;
+  const used = usedEntries(grid);
+  const usedSet = new Set(used.map((entry) => entry.index));
+  const makeOption = (entry, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = paletteLabel(entry);
+    option.style.backgroundColor = entry.hex;
+    option.style.color = luminance(entry.hex) > 0.5 ? '#222' : '#fff';
+    return option;
+  };
+  const usedGroup = document.createElement('optgroup'); usedGroup.label = tr('paintUsedColors');
+  used.forEach((entry) => usedGroup.appendChild(makeOption(entry, entry.index)));
+  const brandOption = Array.from(elements.brand.options).find((option) => option.value === grid.brand);
+  const brandName = brandOption ? brandOption.textContent.replace(/\s*\(\d+\)$/, '') : grid.brand;
+  const allGroup = document.createElement('optgroup'); allGroup.label = tr('paintAllColors', { brand: brandName });
+  grid.palette.forEach((entry, index) => { if (!usedSet.has(index)) allGroup.appendChild(makeOption(entry, index)); });
+  select.replaceChildren(usedGroup, allGroup);
+  select.value = String(appState.edit.color);
+}
+
+function setPaintColor(index) {
+  const grid = appState.grid;
+  if (!grid || !grid.palette[index]) return;
+  appState.edit.color = index;
+  elements.paintColor.value = String(index);
+  elements.paintSwatch.style.backgroundColor = grid.palette[index].hex;
+  elements.legendItems.querySelectorAll('.legend-item').forEach((item) => {
+    const selected = Number(item.dataset.index) === index;
+    item.classList.toggle('is-selected', selected);
+    item.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+function setTool(tool) {
+  appState.edit.tool = tool;
+  toolButtons.forEach((button) => {
+    const active = button.dataset.tool === tool;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-checked', String(active));
+  });
+  elements.beadCanvas.dataset.tool = tool;
+}
+
+function resetEditHistory(grid) {
+  appState.edit.undo = [];
+  appState.edit.redo = [];
+  appState.edit.stroke = null;
+  const used = usedEntries(grid).sort((a, b) => b.count - a.count);
+  appState.edit.color = used.length ? used[0].index : 0;
+}
+
+function setCell(grid, cellIndex, colorIndex) {
+  const previous = grid.indices[cellIndex];
+  if (previous === colorIndex) return previous;
+  grid.counts[previous]--;
+  grid.counts[colorIndex]++;
+  grid.indices[cellIndex] = colorIndex;
+  return previous;
+}
+
+function cellFromEvent(event) {
+  const grid = appState.grid;
+  const rect = elements.beadCanvas.getBoundingClientRect();
+  if (!grid || !rect.width || !rect.height) return -1;
+  const x = Math.floor((event.clientX - rect.left) / rect.width * grid.w);
+  const y = Math.floor((event.clientY - rect.top) / rect.height * grid.h);
+  if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) return -1;
+  return y * grid.w + x;
+}
+
+function scheduleBeadRender() {
+  if (appState.edit.renderQueued) return;
+  appState.edit.renderQueued = true;
+  requestAnimationFrame(() => { appState.edit.renderQueued = false; renderBeads(); });
+}
+
+function paintStrokeCell(cellIndex) {
+  const stroke = appState.edit.stroke;
+  if (!stroke || cellIndex < 0) return;
+  const previous = setCell(appState.grid, cellIndex, appState.edit.color);
+  if (!stroke.changes.has(cellIndex)) stroke.changes.set(cellIndex, previous);
+}
+
+function paintStrokeLine(fromCell, toCell) {
+  const w = appState.grid.w;
+  let x0 = fromCell % w, y0 = Math.floor(fromCell / w);
+  const x1 = toCell % w, y1 = Math.floor(toCell / w);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let error = dx + dy;
+  for (;;) {
+    paintStrokeCell(y0 * w + x0);
+    if (x0 === x1 && y0 === y1) break;
+    const doubled = 2 * error;
+    if (doubled >= dy) { error += dy; x0 += sx; }
+    if (doubled <= dx) { error += dx; y0 += sy; }
+  }
+}
+
+function commitEdit(changes) {
+  const list = [];
+  changes.forEach((from, cellIndex) => {
+    const to = appState.grid.indices[cellIndex];
+    if (from !== to) list.push([cellIndex, from, to]);
+  });
+  if (!list.length) return;
+  appState.edit.undo.push(list);
+  if (appState.edit.undo.length > MAX_HISTORY) appState.edit.undo.shift();
+  appState.edit.redo = [];
+  afterEdit();
+}
+
+function afterEdit() {
+  renderAll();
+  populatePaintColors();
+  setPaintColor(appState.edit.color);
+  if (appState.dataStale) setMessage('resultStatus', 'staleEditedMessage');
+  syncControls();
+}
+
+function floodFill(startCell) {
+  const grid = appState.grid;
+  const target = grid.indices[startCell];
+  const color = appState.edit.color;
+  if (target === color) return;
+  const changes = new Map();
+  const stack = [startCell];
+  while (stack.length) {
+    const cellIndex = stack.pop();
+    if (grid.indices[cellIndex] !== target) continue;
+    changes.set(cellIndex, setCell(grid, cellIndex, color));
+    const x = cellIndex % grid.w;
+    if (x > 0) stack.push(cellIndex - 1);
+    if (x < grid.w - 1) stack.push(cellIndex + 1);
+    if (cellIndex >= grid.w) stack.push(cellIndex - grid.w);
+    if (cellIndex + grid.w < grid.indices.length) stack.push(cellIndex + grid.w);
+  }
+  commitEdit(changes);
+}
+
+function stepHistory(fromStack, toStack, useFrom) {
+  if (!appState.grid || isBusy() || appState.edit.stroke) return;
+  const entry = fromStack.pop();
+  if (!entry) return;
+  entry.forEach(([cellIndex, from, to]) => setCell(appState.grid, cellIndex, useFrom ? from : to));
+  toStack.push(entry);
+  afterEdit();
+}
+
+function undoEdit() { stepHistory(appState.edit.undo, appState.edit.redo, true); }
+function redoEdit() { stepHistory(appState.edit.redo, appState.edit.undo, false); }
+
+function onCanvasPointerDown(event) {
+  const tool = appState.edit.tool;
+  if (tool === 'view' || !appState.grid || isBusy() || event.button > 0) return;
+  const cellIndex = cellFromEvent(event);
+  if (cellIndex < 0) return;
+  event.preventDefault();
+  if (tool === 'picker') {
+    setPaintColor(appState.grid.indices[cellIndex]);
+    setTool('pen');
+  } else if (tool === 'fill') {
+    floodFill(cellIndex);
+  } else if (tool === 'pen') {
+    appState.edit.stroke = { changes: new Map(), last: cellIndex, pointerId: event.pointerId };
+    try { elements.beadCanvas.setPointerCapture(event.pointerId); } catch (_) {}
+    paintStrokeCell(cellIndex);
+    scheduleBeadRender();
+  }
+}
+
+function onCanvasPointerMove(event) {
+  const stroke = appState.edit.stroke;
+  if (!stroke || event.pointerId !== stroke.pointerId) return;
+  const cellIndex = cellFromEvent(event);
+  if (cellIndex < 0 || cellIndex === stroke.last) return;
+  paintStrokeLine(stroke.last, cellIndex);
+  stroke.last = cellIndex;
+  scheduleBeadRender();
+}
+
+function onCanvasPointerUp(event) {
+  const stroke = appState.edit.stroke;
+  if (!stroke || event.pointerId !== stroke.pointerId) return;
+  appState.edit.stroke = null;
+  commitEdit(stroke.changes);
+}
+
+function bindEditEvents() {
+  toolButtons.forEach((button) => button.addEventListener('click', () => setTool(button.dataset.tool)));
+  elements.paintColor.addEventListener('change', () => setPaintColor(Number(elements.paintColor.value)));
+  elements.legendItems.addEventListener('click', (event) => {
+    const item = event.target.closest('.legend-item');
+    if (!item || isBusy()) return;
+    setPaintColor(Number(item.dataset.index));
+    if (appState.edit.tool === 'view' || appState.edit.tool === 'picker') setTool('pen');
+  });
+  elements.undoBtn.addEventListener('click', undoEdit);
+  elements.redoBtn.addEventListener('click', redoEdit);
+  const canvas = elements.beadCanvas;
+  canvas.addEventListener('pointerdown', onCanvasPointerDown);
+  canvas.addEventListener('pointermove', onCanvasPointerMove);
+  canvas.addEventListener('pointerup', onCanvasPointerUp);
+  canvas.addEventListener('pointercancel', onCanvasPointerUp);
+  document.addEventListener('keydown', (event) => {
+    if (!appState.grid || !(event.ctrlKey || event.metaKey) || event.altKey) return;
+    if (event.target.closest && event.target.closest('input, select, textarea')) return;
+    const key = event.key.toLowerCase();
+    if (key === 'z' && !event.shiftKey) { event.preventDefault(); undoEdit(); }
+    else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redoEdit(); }
+  });
+  setTool('view');
+}
+
 function ensureFreshSnapshot() {
   if (!appState.grid) { setMessage('resultStatus', 'errorNoPattern', null, true); return null; }
-  if (appState.dataStale) { setMessage('resultStatus', 'staleMessage', null, true); return null; }
+  if (appState.dataStale && !isEdited()) { setMessage('resultStatus', 'staleMessage', null, true); return null; }
   return appState.grid;
 }
 
@@ -1683,12 +1925,19 @@ function bindEvents() {
   elements.downloadPdf.addEventListener('click', downloadPdf);
   document.addEventListener('bead:languagechange', () => {
     Object.keys(appState.messages).forEach(renderMessage);
-    if (appState.grid) { renderLegend(); renderStatistics(); }
+    if (appState.grid) { renderLegend(); renderStatistics(); populatePaintColors(); setPaintColor(appState.edit.color); }
     syncControls();
   });
   window.addEventListener('beforeunload', () => { if (appState.objectUrl) URL.revokeObjectURL(appState.objectUrl); });
 }
 
 bindEvents();
+bindEditEvents();
+(function applyBrandFromUrl() {
+  try {
+    const brand = new URLSearchParams(window.location.search).get('brand');
+    if (brand && Object.prototype.hasOwnProperty.call(BRAND_PALETTES, brand)) elements.brand.value = brand;
+  } catch (_) {}
+})();
 updateCustomSizeVisibility();
 syncControls();

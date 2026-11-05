@@ -9,6 +9,46 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://beads.dingdongxi.com/colors/</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/mard.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/hama.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/artkal-s.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/artkal-r.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/artkal-c.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/artkal-a.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/perler.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/perler-mini.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://beads.dingdongxi.com/colors/nabbi.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://beads.dingdongxi.com/privacy.html</loc>
     <priority>0.3</priority>
   </url>

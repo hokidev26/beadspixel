@@ -552,6 +552,44 @@ Object.assign(I18N.ko, {
   ariaProductPreview: '비즈 도안 제품 미리보기', ariaPreviewControls: '미리보기 컨트롤', ariaPreviewBackground: '미리보기 배경색 선택', ariaTrustFacts: '제품 신뢰 정보', ariaBrandList: '지원 비즈 브랜드 목록'
 });
 
+// Manual pattern editing.
+Object.assign(I18N['zh-TW'], {
+  ariaEditTools: '圖紙編輯工具', toolView: '瀏覽', toolPen: '畫筆', toolFill: '填色', toolPicker: '滴管', paintColorLabel: '目前顏色',
+  undo: '↶ 復原', redo: '↷ 重做', editHint: '選擇工具後點擊圖紙即可修改；點顏色清單可直接選色。快捷鍵：Ctrl/⌘+Z 復原。',
+  paintUsedColors: '圖紙中的顏色', paintAllColors: '{brand} 全部色號', legendPickHint: '點擊以選用這個顏色',
+  confirmReconvert: '重新轉換會清除你手動修改的內容，確定要繼續嗎？', staleEditedMessage: '設定已變更。重新轉換會清除手動修改；目前圖紙仍可直接匯出。'
+});
+Object.assign(I18N['zh-CN'], {
+  ariaEditTools: '图纸编辑工具', toolView: '浏览', toolPen: '画笔', toolFill: '填色', toolPicker: '吸管', paintColorLabel: '当前颜色',
+  undo: '↶ 撤销', redo: '↷ 重做', editHint: '选择工具后点击图纸即可修改；点击颜色清单可直接选色。快捷键：Ctrl/⌘+Z 撤销。',
+  paintUsedColors: '图纸中的颜色', paintAllColors: '{brand} 全部色号', legendPickHint: '点击以选用这个颜色',
+  confirmReconvert: '重新转换会清除你手动修改的内容，确定要继续吗？', staleEditedMessage: '设置已变更。重新转换会清除手动修改；当前图纸仍可直接导出。'
+});
+Object.assign(I18N.en, {
+  ariaEditTools: 'Pattern editing tools', toolView: 'Browse', toolPen: 'Pen', toolFill: 'Fill', toolPicker: 'Picker', paintColorLabel: 'Current color',
+  undo: '↶ Undo', redo: '↷ Redo', editHint: 'Pick a tool, then click the pattern to edit it. Click a color in the list to select it. Shortcut: Ctrl/⌘+Z to undo.',
+  paintUsedColors: 'Colors in this pattern', paintAllColors: 'All {brand} colors', legendPickHint: 'Click to use this color',
+  confirmReconvert: 'Converting again will discard your manual edits. Continue?', staleEditedMessage: 'Settings changed. Converting again will discard your manual edits; you can still export the current pattern.'
+});
+Object.assign(I18N.ja, {
+  ariaEditTools: '図案編集ツール', toolView: '表示', toolPen: 'ペン', toolFill: '塗りつぶし', toolPicker: 'スポイト', paintColorLabel: '現在の色',
+  undo: '↶ 元に戻す', redo: '↷ やり直す', editHint: 'ツールを選んで図案をクリックすると編集できます。カラーリストをクリックすると色を選べます。Ctrl/⌘+Z で元に戻す。',
+  paintUsedColors: '図案で使用中の色', paintAllColors: '{brand} の全色', legendPickHint: 'クリックしてこの色を使う',
+  confirmReconvert: '再変換すると手動で編集した内容は消えます。続けますか？', staleEditedMessage: '設定が変更されました。再変換すると手動編集は消えます。現在の図案はそのまま書き出せます。'
+});
+Object.assign(I18N.ko, {
+  ariaEditTools: '도안 편집 도구', toolView: '보기', toolPen: '펜', toolFill: '채우기', toolPicker: '스포이드', paintColorLabel: '현재 색상',
+  undo: '↶ 실행 취소', redo: '↷ 다시 실행', editHint: '도구를 선택한 뒤 도안을 클릭해 수정하세요. 색상 목록을 클릭하면 색을 고를 수 있습니다. Ctrl/⌘+Z로 실행 취소.',
+  paintUsedColors: '도안에 사용된 색상', paintAllColors: '{brand} 전체 색상', legendPickHint: '클릭하여 이 색상 사용',
+  confirmReconvert: '다시 변환하면 직접 수정한 내용이 사라집니다. 계속할까요?', staleEditedMessage: '설정이 변경되었습니다. 다시 변환하면 직접 수정한 내용이 사라지며, 현재 도안은 그대로 내보낼 수 있습니다.'
+});
+
+Object.assign(I18N['zh-TW'], { footerColors: '色號表', brandsChartLink: '查看色號表 →' });
+Object.assign(I18N['zh-CN'], { footerColors: '色号表', brandsChartLink: '查看色号表 →' });
+Object.assign(I18N['en'], { footerColors: 'Color charts', brandsChartLink: 'View color charts →' });
+Object.assign(I18N['ja'], { footerColors: 'カラーチャート', brandsChartLink: 'カラーチャートを見る →' });
+Object.assign(I18N['ko'], { footerColors: '색상표', brandsChartLink: '색상표 보기 →' });
+
 function safeStorageGet(key) { try { return window.localStorage.getItem(key); } catch (_) { return null; } }
 function safeStorageSet(key, value) { try { window.localStorage.setItem(key, value); } catch (_) {} }
 function getLang() { return safeStorageGet('bead-lang') || 'zh-TW'; }
