@@ -11,6 +11,9 @@ import { COLOR_KEYS, CATEGORIES, PATTERNS } from './patterns.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SITE = 'https://beads.dingdongxi.com';
+// Cloudflare serves pages without the .html extension (/foo.html redirects to /foo),
+// so canonical, Open Graph, structured data and sitemap URLs use the final form.
+const pageUrl = (path) => `${SITE}/${path.replace(/\.html$/, '')}`;
 
 const appSource = readFileSync(join(root, 'app.js'), 'utf8');
 const paletteSource = appSource.slice(0, appSource.indexOf('const SYMBOLS'));
@@ -39,7 +42,7 @@ const rgb = (hex) => [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset
 const isLight = (hex) => { const [r, g, b] = rgb(hex); return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6; };
 
 function layout({ title, description, path, body, jsonLd }) {
-  const url = `${SITE}/${path}`;
+  const url = pageUrl(path);
   return `<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -74,7 +77,7 @@ ${body}
 }
 
 function breadcrumb(items) {
-  return { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, item: `${SITE}/${item.path}` })) };
+  return { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, item: pageUrl(item.path) })) };
 }
 
 function brandNav(currentId) {
@@ -335,7 +338,7 @@ const urls = [
 writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map(([path, priority]) => `  <url>
-    <loc>${SITE}/${path}</loc>
+    <loc>${pageUrl(path)}</loc>
     <priority>${priority}</priority>
   </url>`).join('\n')}
 </urlset>
