@@ -1490,7 +1490,7 @@ function renderLegend() {
     item.title = tr('legendPickHint');
     const swatch = document.createElement('span'); swatch.className = 'legend-swatch'; swatch.style.backgroundColor = entry.hex;
     const code = document.createElement('strong'); code.className = 'legend-symbol'; code.textContent = entry.code;
-    const details = document.createElement('span'); details.textContent = `${entry.name} (${SYMBOLS[index % SYMBOLS.length]}) ×${entry.count}`;
+    const details = document.createElement('span'); details.textContent = `${entry.name && entry.name !== entry.code ? `${entry.name} ` : ''}(${SYMBOLS[index % SYMBOLS.length]}) ×${entry.count}`;
     item.append(swatch, code, details); elements.legendItems.appendChild(item);
   });
 }
@@ -1978,14 +1978,17 @@ async function loadPatternFromUrl() {
     elements.brand.value = data.brand;
     appState.grid = grid;
     appState.dataStale = false;
-    appState.view.zoom = Math.min(2, Math.max(1, 32 / Math.max(w, h)));
     resetEditHistory(grid);
     elements.resultSection.hidden = false;
+    const wrapperWidth = $('canvasWrapper').clientWidth - 4;
+    appState.view.zoom = Math.max(0.25, Math.min(2, wrapperWidth > 0 ? wrapperWidth / (w * 16) : 1));
     renderAll();
     populatePaintColors();
     setPaintColor(appState.edit.color);
     setMessage('resultStatus', 'patternLoaded', { name: grid.pattern });
     syncControls();
+    // Jump straight to the loaded pattern; the visitor arrived here to see it.
+    elements.resultSection.scrollIntoView({ block: 'start' });
   } catch (error) {
     setMessage('uploadError', errorKey(error, 'errorPatternLoad'), null, true);
   }

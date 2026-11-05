@@ -707,6 +707,7 @@ button.legend-item.is-selected { border-color: var(--accent); box-shadow: 0 0 0 
   .chart-main { padding: 1rem .8rem 2.5rem; }
   .chart-hero { padding: 1.2rem; }
   .chart-hero h1 { font-size: 1.45rem; }
+  .chart-cta { display: block; text-align: center; padding: .75rem 1rem; }
   .header-site-name { font-size: 1.2rem; }
   .chart-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
 }

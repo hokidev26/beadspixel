@@ -41,7 +41,11 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&'
 const rgb = (hex) => [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
 const isLight = (hex) => { const [r, g, b] = rgb(hex); return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6; };
 
+// Keep a trailing arrow on the same line as the word before it.
+const glueArrows = (html) => html.replace(/ →</g, '&nbsp;→<');
+
 function layout({ title, description, path, body, jsonLd }) {
+  body = glueArrows(body);
   const url = pageUrl(path);
   return `<!DOCTYPE html>
 <html lang="zh-TW">
@@ -242,7 +246,7 @@ function patternPage(pattern) {
           <li><span>顏色</span><strong>${pattern.colors.length} 種</strong></li>
           <li><span>難度</span><strong>${pattern.difficulty}</strong></li>
         </ul>
-        <a class="btn-primary chart-cta" href="../editor.html?pattern=${pattern.slug}">在編輯器中打開・修改或下載 PDF →</a>
+        <a class="btn-primary chart-cta" href="../editor.html?pattern=${pattern.slug}">打開編輯器・下載 PDF →</a>
         <p class="hint">在編輯器裡可以用畫筆、填色、橡皮擦換顏色或修改細節，再下載 PNG 或 PDF 圖紙。</p>
       </div>
     </article>
@@ -327,7 +331,7 @@ ${featured.map((pattern) => `        ${patternCard(pattern, 'patterns/')}`).join
       <p class="pattern-more-link"><a href="patterns/">看全部 ${patterns.length} 款拼豆圖案 →</a></p>
     </section>
     ${END}`;
-writeFileSync(indexPath, homepage.slice(0, homepage.indexOf(START)) + homeSection + homepage.slice(homepage.indexOf(END) + END.length));
+writeFileSync(indexPath, homepage.slice(0, homepage.indexOf(START)) + glueArrows(homeSection) + homepage.slice(homepage.indexOf(END) + END.length));
 
 const urls = [
   ['', '1.0'], ['editor.html', '0.9'], ['patterns/', '0.8'], ['colors/', '0.8'],
