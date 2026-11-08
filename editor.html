@@ -29,7 +29,7 @@
       <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-controls="fileInput" aria-describedby="uploadHint uploadStatus uploadError" data-i18n-aria-label="ariaUpload">
         <input type="file" id="fileInput" accept="image/jpeg,image/png,image/gif,image/webp" hidden>
         <div class="upload-placeholder" id="uploadPlaceholder">
-          <span class="upload-icon" aria-hidden="true">📷</span>
+          <span class="upload-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/><circle cx="9" cy="9" r="2"/></svg></span>
           <p data-i18n="uploadText">點擊或拖曳圖片到這裡</p>
           <p class="hint" id="uploadHint" data-i18n="uploadHint">支援 JPG、PNG、GIF、WebP，最大 15 MB</p>
         </div>
@@ -91,20 +91,25 @@
       </div>
     </section>
 
+    <!-- Icons: Lucide (ISC license), https://lucide.dev -->
     <section class="result" id="resultSection" hidden aria-labelledby="resultTitle">
       <div class="workspace-head">
         <h2 id="resultTitle" data-i18n="resultTitle">拼豆圖紙</h2>
         <div id="resultStatus" class="status-message" role="status" aria-live="polite"></div>
-        <button type="button" id="reconvertBtn" class="btn-small btn-reconvert" hidden data-i18n="reconvertBtn">↻ 套用新設定</button>
-        <button type="button" id="settingsJump" class="btn-small settings-jump" data-i18n="settingsJump">⚙ 調整設定</button>
+        <button type="button" id="reconvertBtn" class="btn-small btn-reconvert" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg><span data-i18n="reconvertBtn">套用新設定</span></button>
+        <div class="tool-group toolbar-end">
+          <button type="button" id="downloadPng" class="btn-small"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg><span data-i18n="downloadPng">PNG</span></button>
+          <button type="button" id="downloadPdf" class="btn-small btn-small-accent"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg><span data-i18n="downloadPdf">PDF</span></button>
+        </div>
+        <button type="button" id="settingsJump" class="btn-small settings-jump"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg><span data-i18n="settingsJump">調整設定</span></button>
       </div>
       <div class="edit-toolbar" id="editToolbar" role="toolbar" data-i18n-aria-label="ariaEditTools">
         <div class="tool-group" role="radiogroup" data-i18n-aria-label="ariaEditTools">
-          <button type="button" class="tool-btn is-active" data-tool="view" data-shortcut="V" role="radio" aria-checked="true"><span aria-hidden="true">✋</span><span class="tool-label" data-i18n="toolView">瀏覽</span></button>
-          <button type="button" class="tool-btn" data-tool="pen" data-shortcut="B" role="radio" aria-checked="false"><span aria-hidden="true">✏️</span><span class="tool-label" data-i18n="toolPen">畫筆</span></button>
-          <button type="button" class="tool-btn" data-tool="fill" data-shortcut="G" role="radio" aria-checked="false"><span aria-hidden="true">🪣</span><span class="tool-label" data-i18n="toolFill">填色</span></button>
-          <button type="button" class="tool-btn" data-tool="picker" data-shortcut="I" role="radio" aria-checked="false"><span aria-hidden="true">💧</span><span class="tool-label" data-i18n="toolPicker">滴管</span></button>
-          <button type="button" class="tool-btn" data-tool="eraser" data-shortcut="E" role="radio" aria-checked="false"><span aria-hidden="true">🧽</span><span class="tool-label" data-i18n="toolEraser">橡皮擦</span></button>
+          <button type="button" class="tool-btn is-active" data-tool="view" data-shortcut="V" role="radio" aria-checked="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><span class="tool-label" data-i18n="toolView">瀏覽</span></button>
+          <button type="button" class="tool-btn" data-tool="pen" data-shortcut="B" role="radio" aria-checked="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg><span class="tool-label" data-i18n="toolPen">畫筆</span></button>
+          <button type="button" class="tool-btn" data-tool="fill" data-shortcut="G" role="radio" aria-checked="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg><span class="tool-label" data-i18n="toolFill">填色</span></button>
+          <button type="button" class="tool-btn" data-tool="picker" data-shortcut="I" role="radio" aria-checked="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg><span class="tool-label" data-i18n="toolPicker">滴管</span></button>
+          <button type="button" class="tool-btn" data-tool="eraser" data-shortcut="E" role="radio" aria-checked="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg><span class="tool-label" data-i18n="toolEraser">橡皮擦</span></button>
         </div>
         <label class="paint-color" for="paintColor">
           <span class="paint-swatch" id="paintSwatch" aria-hidden="true"></span>
@@ -112,12 +117,8 @@
           <select id="paintColor"></select>
         </label>
         <div class="tool-group">
-          <button type="button" id="undoBtn" class="btn-small" disabled data-i18n="undo">↶ 復原</button>
-          <button type="button" id="redoBtn" class="btn-small" disabled data-i18n="redo">↷ 重做</button>
-        </div>
-        <div class="tool-group toolbar-end">
-          <button type="button" id="downloadPng" class="btn-small" data-i18n="downloadPng">↓ PNG</button>
-          <button type="button" id="downloadPdf" class="btn-small btn-small-accent" data-i18n="downloadPdf">↓ PDF</button>
+          <button type="button" id="undoBtn" class="btn-small" disabled><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg><span data-i18n="undo">復原</span></button>
+          <button type="button" id="redoBtn" class="btn-small" disabled><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg><span data-i18n="redo">重做</span></button>
         </div>
       </div>
       <div class="canvas-stage" id="canvasStage" data-tool="view">
@@ -125,17 +126,18 @@
         <div class="stage-info" id="stageInfo" aria-hidden="true"></div>
         <canvas id="minimap" class="minimap" hidden aria-hidden="true"></canvas>
         <div class="zoom-controls" role="group" data-i18n-aria-label="ariaZoomControls">
-          <button type="button" id="zoomOut" class="zoom-btn" data-i18n-aria-label="zoomOutLabel" data-i18n-title="zoomOutLabel">−</button>
+          <button type="button" id="zoomOut" class="zoom-btn" data-i18n-aria-label="zoomOutLabel" data-i18n-title="zoomOutLabel"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
           <span class="zoom-level" id="zoomLevel" aria-live="off">100%</span>
-          <button type="button" id="zoomIn" class="zoom-btn" data-i18n-aria-label="zoomInLabel" data-i18n-title="zoomInLabel">+</button>
-          <button type="button" id="zoomFit" class="zoom-btn zoom-text" data-i18n-title="zoomFitTitle"><span aria-hidden="true">⤢</span> <span data-i18n="zoomFit">全覽</span></button>
-          <button type="button" id="focusBtn" class="zoom-btn" aria-pressed="false" data-i18n-aria-label="focusMode" data-i18n-title="focusMode">⛶</button>
+          <button type="button" id="zoomIn" class="zoom-btn" data-i18n-aria-label="zoomInLabel" data-i18n-title="zoomInLabel"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+          <button type="button" id="zoomFit" class="zoom-btn zoom-text" data-i18n-title="zoomFitTitle"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg><span data-i18n="zoomFit">全覽</span></button>
+          <button type="button" id="focusBtn" class="zoom-btn" aria-pressed="false" data-i18n-aria-label="focusMode" data-i18n-title="focusMode"><svg class="icon icon-focus-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg><svg class="icon icon-focus-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg></button>
         </div>
       </div>
       <aside class="workspace-side">
         <div class="bead-count" id="beadCount" aria-live="polite"></div>
         <div class="color-legend" id="colorLegend"><h3 data-i18n="colorList">顏色清單</h3><div id="legendItems"></div></div>
-        <div class="buy-section" id="buySection"><a id="buyLink" href="https://dingdongxi.com" target="_blank" rel="noopener" class="btn-buy"><span data-i18n="buyBtn">購買材料</span></a><p class="buy-hint" data-i18n="buyHint">根據色號清單，一鍵前往商城選購所需珠子</p></div>
+        <!-- Shop link hidden until the store opens: remove `hidden` to bring it back. -->
+        <div class="buy-section" id="buySection" hidden><a id="buyLink" href="https://dingdongxi.com" target="_blank" rel="noopener" class="btn-buy"><span data-i18n="buyBtn">購買材料</span></a><p class="buy-hint" data-i18n="buyHint">根據色號清單，一鍵前往商城選購所需珠子</p></div>
       </aside>
     </section>
   </main>

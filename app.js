@@ -1741,7 +1741,6 @@ function toggleFocusMode(force) {
   elements.resultSection.classList.toggle('is-focus', on);
   document.body.classList.toggle('workspace-focus', on);
   elements.focusBtn.setAttribute('aria-pressed', String(on));
-  elements.focusBtn.textContent = on ? '✕' : '⛶';
   requestAnimationFrame(() => { if (syncStageSize()) renderBeads(); });
 }
 
