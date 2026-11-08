@@ -92,18 +92,19 @@
     </section>
 
     <section class="result" id="resultSection" hidden aria-labelledby="resultTitle">
-      <h2 id="resultTitle" data-i18n="resultTitle">拼豆圖紙</h2>
-      <div id="resultStatus" class="status-message" role="status" aria-live="polite"></div>
-      <div class="result-toolbar">
-        <button id="zoomIn" class="btn-small" data-i18n="zoomIn">+ 放大</button><button id="zoomOut" class="btn-small" data-i18n="zoomOut">− 縮小</button><button id="downloadPng" class="btn-small" data-i18n="downloadPng">↓ PNG</button><button id="downloadPdf" class="btn-small" data-i18n="downloadPdf">↓ PDF</button>
+      <div class="workspace-head">
+        <h2 id="resultTitle" data-i18n="resultTitle">拼豆圖紙</h2>
+        <div id="resultStatus" class="status-message" role="status" aria-live="polite"></div>
+        <button type="button" id="reconvertBtn" class="btn-small btn-reconvert" hidden data-i18n="reconvertBtn">↻ 套用新設定</button>
+        <button type="button" id="settingsJump" class="btn-small settings-jump" data-i18n="settingsJump">⚙ 調整設定</button>
       </div>
       <div class="edit-toolbar" id="editToolbar" role="toolbar" data-i18n-aria-label="ariaEditTools">
         <div class="tool-group" role="radiogroup" data-i18n-aria-label="ariaEditTools">
-          <button type="button" class="tool-btn is-active" data-tool="view" role="radio" aria-checked="true"><span aria-hidden="true">✋</span> <span data-i18n="toolView">瀏覽</span></button>
-          <button type="button" class="tool-btn" data-tool="pen" role="radio" aria-checked="false"><span aria-hidden="true">✏️</span> <span data-i18n="toolPen">畫筆</span></button>
-          <button type="button" class="tool-btn" data-tool="fill" role="radio" aria-checked="false"><span aria-hidden="true">🪣</span> <span data-i18n="toolFill">填色</span></button>
-          <button type="button" class="tool-btn" data-tool="picker" role="radio" aria-checked="false"><span aria-hidden="true">💧</span> <span data-i18n="toolPicker">滴管</span></button>
-          <button type="button" class="tool-btn" data-tool="eraser" role="radio" aria-checked="false"><span aria-hidden="true">🧽</span> <span data-i18n="toolEraser">橡皮擦</span></button>
+          <button type="button" class="tool-btn is-active" data-tool="view" data-shortcut="V" role="radio" aria-checked="true"><span aria-hidden="true">✋</span><span class="tool-label" data-i18n="toolView">瀏覽</span></button>
+          <button type="button" class="tool-btn" data-tool="pen" data-shortcut="B" role="radio" aria-checked="false"><span aria-hidden="true">✏️</span><span class="tool-label" data-i18n="toolPen">畫筆</span></button>
+          <button type="button" class="tool-btn" data-tool="fill" data-shortcut="G" role="radio" aria-checked="false"><span aria-hidden="true">🪣</span><span class="tool-label" data-i18n="toolFill">填色</span></button>
+          <button type="button" class="tool-btn" data-tool="picker" data-shortcut="I" role="radio" aria-checked="false"><span aria-hidden="true">💧</span><span class="tool-label" data-i18n="toolPicker">滴管</span></button>
+          <button type="button" class="tool-btn" data-tool="eraser" data-shortcut="E" role="radio" aria-checked="false"><span aria-hidden="true">🧽</span><span class="tool-label" data-i18n="toolEraser">橡皮擦</span></button>
         </div>
         <label class="paint-color" for="paintColor">
           <span class="paint-swatch" id="paintSwatch" aria-hidden="true"></span>
@@ -114,12 +115,28 @@
           <button type="button" id="undoBtn" class="btn-small" disabled data-i18n="undo">↶ 復原</button>
           <button type="button" id="redoBtn" class="btn-small" disabled data-i18n="redo">↷ 重做</button>
         </div>
-        <p class="hint edit-hint" data-i18n="editHint">選擇工具後點擊圖紙即可修改；點顏色清單可直接選色。</p>
+        <div class="tool-group toolbar-end">
+          <button type="button" id="downloadPng" class="btn-small" data-i18n="downloadPng">↓ PNG</button>
+          <button type="button" id="downloadPdf" class="btn-small btn-small-accent" data-i18n="downloadPdf">↓ PDF</button>
+        </div>
       </div>
-      <div class="canvas-wrapper" id="canvasWrapper"><canvas id="beadCanvas" tabindex="0" data-i18n-aria-label="ariaPattern"></canvas></div>
-      <div class="color-legend" id="colorLegend"><h3 data-i18n="colorList">顏色清單</h3><div id="legendItems"></div></div>
-      <div class="bead-count" id="beadCount" aria-live="polite"></div>
-      <div class="buy-section" id="buySection"><a id="buyLink" href="https://dingdongxi.com" target="_blank" rel="noopener" class="btn-buy"><span data-i18n="buyBtn">購買材料</span></a><p class="buy-hint" data-i18n="buyHint">根據色號清單，一鍵前往商城選購所需珠子</p></div>
+      <div class="canvas-stage" id="canvasStage" data-tool="view">
+        <canvas id="beadCanvas" tabindex="0" data-i18n-aria-label="ariaPattern"></canvas>
+        <div class="stage-info" id="stageInfo" aria-hidden="true"></div>
+        <canvas id="minimap" class="minimap" hidden aria-hidden="true"></canvas>
+        <div class="zoom-controls" role="group" data-i18n-aria-label="ariaZoomControls">
+          <button type="button" id="zoomOut" class="zoom-btn" data-i18n-aria-label="zoomOutLabel" data-i18n-title="zoomOutLabel">−</button>
+          <span class="zoom-level" id="zoomLevel" aria-live="off">100%</span>
+          <button type="button" id="zoomIn" class="zoom-btn" data-i18n-aria-label="zoomInLabel" data-i18n-title="zoomInLabel">+</button>
+          <button type="button" id="zoomFit" class="zoom-btn zoom-text" data-i18n-title="zoomFitTitle"><span aria-hidden="true">⤢</span> <span data-i18n="zoomFit">全覽</span></button>
+          <button type="button" id="focusBtn" class="zoom-btn" aria-pressed="false" data-i18n-aria-label="focusMode" data-i18n-title="focusMode">⛶</button>
+        </div>
+      </div>
+      <aside class="workspace-side">
+        <div class="bead-count" id="beadCount" aria-live="polite"></div>
+        <div class="color-legend" id="colorLegend"><h3 data-i18n="colorList">顏色清單</h3><div id="legendItems"></div></div>
+        <div class="buy-section" id="buySection"><a id="buyLink" href="https://dingdongxi.com" target="_blank" rel="noopener" class="btn-buy"><span data-i18n="buyBtn">購買材料</span></a><p class="buy-hint" data-i18n="buyHint">根據色號清單，一鍵前往商城選購所需珠子</p></div>
+      </aside>
     </section>
   </main>
   <footer><div class="footer-links"><a href="index.html" data-i18n="footerHome">首頁</a><a href="editor.html" data-i18n="footerEditor">圖紙製作</a><a href="patterns/" data-i18n="footerPatterns">拼豆圖案</a><a href="colors/" data-i18n="footerColors">色號表</a><a href="privacy.html" data-i18n="footerPrivacy">隱私權政策</a><a href="terms.html" data-i18n="footerTerms">使用條款</a><a href="mailto:hokidev26@gmail.com" data-i18n="footerContact">聯絡我們</a></div><p class="footer-copy"><span data-i18n="footer">拼豆圖紙產生器 — 免費線上工具 · 色碼資料來源</span> <a href="https://fusebead.sulian-blog.com" target="_blank" rel="noopener">fusebead.sulian-blog.com</a></p><p class="footer-note" data-i18n="footerNote">本工具完全在瀏覽器中運行，不會上傳或儲存任何圖片。</p></footer>

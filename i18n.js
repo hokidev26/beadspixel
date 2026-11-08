@@ -602,6 +602,43 @@ Object.assign(I18N['en'], { footerPatterns: 'Free patterns' });
 Object.assign(I18N['ja'], { footerPatterns: '無料図案' });
 Object.assign(I18N['ko'], { footerPatterns: '무료 도안' });
 
+// Canvas workspace (zoom, pan, focus mode).
+Object.assign(I18N['zh-TW'], {
+  canvasHintTouch: '雙指縮放・拖曳移動畫面',
+  reconvertBtn: '↻ 套用新設定', settingsJump: '⚙ 調整設定', ariaZoomControls: '畫布縮放控制',
+  zoomInLabel: '放大 (+)', zoomOutLabel: '縮小 (−)', zoomFit: '全覽', zoomFitTitle: '縮放到看見整張圖紙 (0)',
+  focusMode: '專注模式（Esc 離開）', canvasHint: '滾輪或雙指縮放・拖曳移動畫面・按住空白鍵可隨時拖曳',
+  cellInfo: '第 {y} 列・第 {x} 欄', emptyCell: '空白'
+});
+Object.assign(I18N['zh-CN'], {
+  canvasHintTouch: '双指缩放・拖动移动画面',
+  reconvertBtn: '↻ 应用新设置', settingsJump: '⚙ 调整设置', ariaZoomControls: '画布缩放控制',
+  zoomInLabel: '放大 (+)', zoomOutLabel: '缩小 (−)', zoomFit: '全览', zoomFitTitle: '缩放到看见整张图纸 (0)',
+  focusMode: '专注模式（Esc 退出）', canvasHint: '滚轮或双指缩放・拖动移动画面・按住空格键可随时拖动',
+  cellInfo: '第 {y} 行・第 {x} 列', emptyCell: '空白'
+});
+Object.assign(I18N.en, {
+  canvasHintTouch: 'Pinch to zoom · drag to move',
+  reconvertBtn: '↻ Apply new settings', settingsJump: '⚙ Settings', ariaZoomControls: 'Canvas zoom controls',
+  zoomInLabel: 'Zoom in (+)', zoomOutLabel: 'Zoom out (−)', zoomFit: 'Fit', zoomFitTitle: 'Zoom to show the whole pattern (0)',
+  focusMode: 'Focus mode (Esc to exit)', canvasHint: 'Scroll or pinch to zoom · drag to move · hold Space to pan with any tool',
+  cellInfo: 'Row {y}, Col {x}', emptyCell: 'Empty'
+});
+Object.assign(I18N.ja, {
+  canvasHintTouch: 'ピンチで拡大縮小・ドラッグで移動',
+  reconvertBtn: '↻ 新しい設定で再変換', settingsJump: '⚙ 設定を変更', ariaZoomControls: 'キャンバスのズーム操作',
+  zoomInLabel: '拡大 (+)', zoomOutLabel: '縮小 (−)', zoomFit: '全体', zoomFitTitle: '図案全体が見えるように表示 (0)',
+  focusMode: '集中モード（Esc で終了）', canvasHint: 'ホイール／ピンチで拡大縮小・ドラッグで移動・スペースキーを押しながらいつでも移動',
+  cellInfo: '{y} 行目・{x} 列目', emptyCell: '空白'
+});
+Object.assign(I18N.ko, {
+  canvasHintTouch: '핀치로 확대/축소 · 드래그로 이동',
+  reconvertBtn: '↻ 새 설정 적용', settingsJump: '⚙ 설정 변경', ariaZoomControls: '캔버스 확대/축소 컨트롤',
+  zoomInLabel: '확대 (+)', zoomOutLabel: '축소 (−)', zoomFit: '전체', zoomFitTitle: '도안 전체가 보이도록 맞추기 (0)',
+  focusMode: '집중 모드 (Esc로 종료)', canvasHint: '휠 또는 핀치로 확대/축소 · 드래그로 이동 · Space를 누르면 언제든 이동',
+  cellInfo: '{y}행 {x}열', emptyCell: '빈칸'
+});
+
 function safeStorageGet(key) { try { return window.localStorage.getItem(key); } catch (_) { return null; } }
 function safeStorageSet(key, value) { try { window.localStorage.setItem(key, value); } catch (_) {} }
 function getLang() { return safeStorageGet('bead-lang') || 'zh-TW'; }
@@ -613,6 +650,7 @@ function applyLang(lang) {
   document.querySelectorAll('[data-i18n-html]').forEach(function(el) { const value = dict[el.getAttribute('data-i18n-html')]; if (value != null) el.innerHTML = value; });
   document.querySelectorAll('[data-i18n-alt]').forEach(function(el) { const value = dict[el.getAttribute('data-i18n-alt')]; if (value != null) el.setAttribute('alt', value); });
   document.querySelectorAll('[data-i18n-aria-label]').forEach(function(el) { const value = dict[el.getAttribute('data-i18n-aria-label')]; if (value != null) el.setAttribute('aria-label', value); });
+  document.querySelectorAll('[data-i18n-title]').forEach(function(el) { const value = dict[el.getAttribute('data-i18n-title')]; if (value != null) el.setAttribute('title', value); });
   document.documentElement.lang = lang;
   const pageTitle = document.body && document.body.getAttribute('data-page-title'); if (pageTitle) document.title = dict[pageTitle] || document.title;
   document.querySelectorAll('#langSelect').forEach(function(select) { select.value = lang; });

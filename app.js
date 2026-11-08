@@ -1104,7 +1104,9 @@ const elements = {
   highlightVal: $('highlightVal'), convertBtn: $('convertBtn'), resultSection: $('resultSection'),
   resultStatus: $('resultStatus'), beadCanvas: $('beadCanvas'), legendItems: $('legendItems'), beadCount: $('beadCount'),
   zoomIn: $('zoomIn'), zoomOut: $('zoomOut'), downloadPng: $('downloadPng'), downloadPdf: $('downloadPdf'),
-  editToolbar: $('editToolbar'), paintColor: $('paintColor'), paintSwatch: $('paintSwatch'), undoBtn: $('undoBtn'), redoBtn: $('redoBtn')
+  editToolbar: $('editToolbar'), paintColor: $('paintColor'), paintSwatch: $('paintSwatch'), undoBtn: $('undoBtn'), redoBtn: $('redoBtn'),
+  canvasStage: $('canvasStage'), stageInfo: $('stageInfo'), minimap: $('minimap'), zoomLevel: $('zoomLevel'), zoomFit: $('zoomFit'),
+  focusBtn: $('focusBtn'), reconvertBtn: $('reconvertBtn'), settingsJump: $('settingsJump')
 };
 const toolButtons = Array.from(document.querySelectorAll('[data-tool]'));
 
@@ -1118,7 +1120,16 @@ const appState = {
   dataStale: false,
   operations: { upload: false, convert: false, png: false, pdf: false },
   messages: { uploadStatus: null, uploadError: null, resultStatus: null },
-  view: { zoom: 1, shape: 'circle', showGrid: true, showSymbols: false, highlight: 10 },
+  view: { shape: 'circle', showGrid: true, showSymbols: false, highlight: 10 },
+  // Canvas camera: `cell` is CSS px per bead, (ox, oy) is the pattern's top-left inside the stage.
+  camera: { cell: 16, ox: 0, oy: 0, w: 0, h: 0, fitted: true },
+  pointers: new Map(),
+  gesture: null,
+  pixels: { canvas: null, grid: null, dirty: true },
+  hoverCell: -1,
+  spaceDown: false,
+  stageHover: false,
+  trackpadUntil: 0,
   edit: { tool: 'view', color: 0, undo: [], redo: [], stroke: null, renderQueued: false }
 };
 const MAX_HISTORY = 100;
@@ -1130,7 +1141,7 @@ const dataControls = [
 ];
 const viewControls = [
   elements.beadShape, elements.showGrid, elements.showSymbols, elements.highlightLines,
-  elements.zoomIn, elements.zoomOut
+  elements.zoomIn, elements.zoomOut, elements.zoomFit
 ];
 
 function tr(key, values) {
@@ -1170,6 +1181,8 @@ function syncControls() {
   elements.paintColor.disabled = busy || !appState.grid;
   elements.undoBtn.disabled = busy || !appState.edit.undo.length;
   elements.redoBtn.disabled = busy || !appState.edit.redo.length;
+  elements.reconvertBtn.hidden = !(appState.dataStale && appState.image);
+  elements.reconvertBtn.disabled = busy;
   dataControls.forEach((control) => { control.disabled = busy; });
   elements.uploadArea.setAttribute('aria-disabled', String(busy));
   viewControls.forEach((control) => { control.disabled = pdfBusy; });
@@ -1279,7 +1292,6 @@ function getDataOptions() {
 
 function getViewOptions() {
   return {
-    zoom: appState.view.zoom,
     shape: elements.beadShape.value,
     showGrid: elements.showGrid.checked,
     showSymbols: elements.showSymbols.checked,
@@ -1374,15 +1386,14 @@ async function convert() {
     grid.revision = revisionSnapshot;
     appState.grid = grid;
     appState.dataStale = false;
-    appState.view.zoom = 1;
     resetEditHistory(grid);
-    elements.resultSection.hidden = false;
+    showWorkspace();
     elements.resultSection.classList.remove('is-stale');
     renderAll();
     populatePaintColors();
     setPaintColor(appState.edit.color);
     setMessage('resultStatus', 'convertComplete');
-    elements.resultSection.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    scrollToWorkspace(matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
   } catch (error) {
     setMessage('resultStatus', errorKey(error, 'errorCanvas'), null, true);
   } finally {
@@ -1455,28 +1466,283 @@ function drawGrid(ctx, grid, settings, scale, originX, originY, bounds) {
   ctx.restore();
 }
 
+// ===== Canvas workspace: camera, rendering, zoom & pan =====
+const MAX_CELL = 96;
+const DETAIL_CELL = 7; // below this many px per bead, draw a flat pixel image instead of beads
+const MINIMAP_SIDE = 150;
+const FIT_BOTTOM_RESERVE = 40; // keep the zoom bar from covering the last rows when fitted
+const WIDE_LAYOUT = matchMedia('(min-width: 1024px)');
+const COARSE_POINTER = matchMedia('(pointer: coarse)');
+
+function showWorkspace() {
+  document.body.classList.add('has-pattern');
+  elements.resultSection.hidden = false;
+  appState.camera.fitted = true;
+  syncStageSize(true);
+}
+
+function scrollToWorkspace(behavior) {
+  const target = WIDE_LAYOUT.matches ? document.querySelector('main') : elements.resultSection;
+  if (target) target.scrollIntoView({ behavior: behavior || 'auto', block: 'start' });
+}
+
+function zoomLimits() {
+  const fit = fitCellSize();
+  return { min: Math.max(0.5, Math.min(fit * 0.5, 4)), max: Math.max(MAX_CELL, fit * 2) };
+}
+
+function fitCellSize() {
+  const grid = appState.grid;
+  const cam = appState.camera;
+  if (!grid || !cam.w || !cam.h) return 16;
+  const pad = fitPadding();
+  return Math.max(0.5, Math.min((cam.w - pad * 2) / grid.w, (cam.h - pad * 2 - FIT_BOTTOM_RESERVE) / grid.h, MAX_CELL));
+}
+
+function fitPadding() {
+  const cam = appState.camera;
+  return Math.min(28, Math.max(12, Math.min(cam.w, cam.h) * 0.05));
+}
+
+function syncStageSize(force) {
+  const cam = appState.camera;
+  const rect = elements.canvasStage.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width));
+  const h = Math.max(1, Math.round(rect.height));
+  if (!force && w === cam.w && h === cam.h) return false;
+  const prevW = cam.w, prevH = cam.h;
+  cam.w = w; cam.h = h;
+  if (cam.fitted || !prevW || !prevH) fitView(false);
+  else { cam.ox += (w - prevW) / 2; cam.oy += (h - prevH) / 2; clampPan(); }
+  return true;
+}
+
+function fitView(render) {
+  const grid = appState.grid;
+  const cam = appState.camera;
+  if (!grid) return;
+  cam.cell = fitCellSize();
+  cam.ox = (cam.w - grid.w * cam.cell) / 2;
+  cam.oy = (cam.h - FIT_BOTTOM_RESERVE - grid.h * cam.cell) / 2;
+  cam.fitted = true;
+  if (render !== false) renderBeads();
+}
+
+function clampPan() {
+  const grid = appState.grid;
+  const cam = appState.camera;
+  if (!grid) return;
+  const gw = grid.w * cam.cell, gh = grid.h * cam.cell;
+  const mx = Math.min(60, gw / 2), my = Math.min(60, gh / 2);
+  cam.ox = Math.min(Math.max(cam.ox, mx - gw), cam.w - mx);
+  cam.oy = Math.min(Math.max(cam.oy, my - gh), cam.h - my);
+}
+
+function zoomAt(factor, sx, sy) {
+  const cam = appState.camera;
+  if (!appState.grid || !Number.isFinite(factor)) return;
+  const { min, max } = zoomLimits();
+  const cell = Math.min(max, Math.max(min, cam.cell * factor));
+  if (cell === cam.cell) return;
+  const px = sx == null ? cam.w / 2 : sx, py = sy == null ? cam.h / 2 : sy;
+  cam.ox = px - (px - cam.ox) / cam.cell * cell;
+  cam.oy = py - (py - cam.oy) / cam.cell * cell;
+  cam.cell = cell;
+  cam.fitted = false;
+  clampPan();
+  scheduleBeadRender();
+}
+
+function panBy(dx, dy) {
+  const cam = appState.camera;
+  cam.ox += dx; cam.oy += dy; cam.fitted = false;
+  clampPan();
+  scheduleBeadRender();
+}
+
+function patternPixels() {
+  const grid = appState.grid;
+  const pixels = appState.pixels;
+  if (!pixels.canvas) pixels.canvas = document.createElement('canvas');
+  if (pixels.grid !== grid || pixels.canvas.width !== grid.w || pixels.canvas.height !== grid.h) {
+    pixels.canvas.width = grid.w; pixels.canvas.height = grid.h;
+    pixels.grid = grid; pixels.dirty = true;
+  }
+  if (pixels.dirty) {
+    const ctx = pixels.canvas.getContext('2d');
+    const image = ctx.createImageData(grid.w, grid.h);
+    const rgb = grid.palette.map((entry) => hexToRgb(entry.hex));
+    for (let i = 0; i < grid.indices.length; i++) {
+      const index = grid.indices[i];
+      if (index === EMPTY_CELL) continue;
+      const color = rgb[index], o = i * 4;
+      image.data[o] = color[0]; image.data[o + 1] = color[1]; image.data[o + 2] = color[2]; image.data[o + 3] = 255;
+    }
+    ctx.putImageData(image, 0, 0);
+    pixels.dirty = false;
+  }
+  return pixels.canvas;
+}
+
+function drawHighlightLines(ctx, grid, cam, highlight, x0, y0, x1, y1) {
+  if (highlight <= 0 || cam.cell * highlight < 14) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,0,0,0.42)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = Math.ceil(x0 / highlight) * highlight; x <= x1; x += highlight) { const px = cam.ox + x * cam.cell; ctx.moveTo(px, cam.oy + y0 * cam.cell); ctx.lineTo(px, cam.oy + y1 * cam.cell); }
+  for (let y = Math.ceil(y0 / highlight) * highlight; y <= y1; y += highlight) { const py = cam.oy + y * cam.cell; ctx.moveTo(cam.ox + x0 * cam.cell, py); ctx.lineTo(cam.ox + x1 * cam.cell, py); }
+  ctx.stroke();
+  ctx.restore();
+}
+
 function renderBeads() {
   const grid = appState.grid;
   if (!grid) return;
   const view = getViewOptions();
   appState.view = view;
-  const cell = Math.max(4, Math.round(16 * view.zoom));
-  const logicalWidth = grid.w * cell;
-  const logicalHeight = grid.h * cell;
-  const scale = canvasScale(logicalWidth, logicalHeight);
+  const cam = appState.camera;
+  if (!cam.w || !cam.h) syncStageSize(true);
   const canvas = elements.beadCanvas;
   try {
-    canvas.width = Math.max(1, Math.floor(logicalWidth * scale));
-    canvas.height = Math.max(1, Math.floor(logicalHeight * scale));
-    canvas.style.width = `${logicalWidth}px`;
-    canvas.style.height = `${logicalHeight}px`;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const pw = Math.max(1, Math.round(cam.w * dpr)), ph = Math.max(1, Math.round(cam.h * dpr));
+    if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
     const ctx = canvas.getContext('2d');
     if (!ctx) throw appError('errorCanvas');
-    ctx.fillStyle = '#f5f3ef'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    drawGrid(ctx, grid, { ...view, cell }, scale, 0, 0, { x: 0, y: 0, w: grid.w, h: grid.h });
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cam.w, cam.h);
+    const cell = cam.cell, gw = grid.w * cell, gh = grid.h * cell;
+    ctx.save();
+    ctx.shadowColor = 'rgba(60,50,40,0.18)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3;
+    ctx.fillStyle = '#fbfaf7'; ctx.fillRect(cam.ox, cam.oy, gw, gh);
+    ctx.restore();
+    const x0 = Math.max(0, Math.floor(-cam.ox / cell)), y0 = Math.max(0, Math.floor(-cam.oy / cell));
+    const x1 = Math.min(grid.w, Math.ceil((cam.w - cam.ox) / cell)), y1 = Math.min(grid.h, Math.ceil((cam.h - cam.oy) / cell));
+    if (x1 > x0 && y1 > y0) {
+      if (cell < DETAIL_CELL) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(patternPixels(), cam.ox, cam.oy, gw, gh);
+        drawHighlightLines(ctx, grid, cam, view.highlight, x0, y0, x1, y1);
+      } else {
+        drawGrid(ctx, grid, { ...view, cell }, 1, cam.ox + x0 * cell, cam.oy + y0 * cell, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+      }
+    }
+    drawHoverCell(ctx, grid, cam);
   } catch (error) {
     setMessage('resultStatus', 'errorCanvas', null, true);
   }
+  renderMinimap();
+  updateZoomLabel();
+}
+
+function drawHoverCell(ctx, grid, cam) {
+  const cellIndex = appState.hoverCell;
+  if (cellIndex < 0 || cellIndex >= grid.indices.length || appState.gesture) return;
+  const x = cellIndex % grid.w, y = Math.floor(cellIndex / grid.w);
+  const left = cam.ox + x * cam.cell, top = cam.oy + y * cam.cell, size = cam.cell;
+  const tool = appState.edit.tool;
+  if ((tool === 'pen' || tool === 'fill') && grid.palette[appState.edit.color] && size >= 4) {
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = grid.palette[appState.edit.color].hex;
+    ctx.beginPath(); ctx.arc(left + size / 2, top + size / 2, size * 0.36, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.lineWidth = 2; ctx.strokeStyle = '#fff';
+  ctx.strokeRect(left - 1, top - 1, size + 2, size + 2);
+  ctx.lineWidth = 1.5; ctx.strokeStyle = tool === 'eraser' ? '#af3d2d' : '#f06449';
+  ctx.strokeRect(left - 1, top - 1, size + 2, size + 2);
+}
+
+function isWholePatternVisible() {
+  const grid = appState.grid, cam = appState.camera;
+  return cam.ox >= -0.5 && cam.oy >= -0.5 && cam.ox + grid.w * cam.cell <= cam.w + 0.5 && cam.oy + grid.h * cam.cell <= cam.h + 0.5;
+}
+
+function minimapScale() {
+  const grid = appState.grid;
+  return Math.min(MINIMAP_SIDE / grid.w, MINIMAP_SIDE / grid.h);
+}
+
+function renderMinimap() {
+  const grid = appState.grid, map = elements.minimap;
+  if (!grid) return;
+  const hide = isWholePatternVisible() || appState.camera.w < 360;
+  map.hidden = hide;
+  if (hide) return;
+  const cam = appState.camera;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const scale = minimapScale();
+  const w = Math.round(grid.w * scale), h = Math.round(grid.h * scale);
+  if (map.width !== Math.round(w * dpr) || map.height !== Math.round(h * dpr)) {
+    map.width = Math.round(w * dpr); map.height = Math.round(h * dpr);
+    map.style.width = `${w}px`; map.style.height = `${h}px`;
+  }
+  const ctx = map.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#fbfaf7'; ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(patternPixels(), 0, 0, w, h);
+  const k = scale / cam.cell;
+  const rx = -cam.ox * k, ry = -cam.oy * k, rw = cam.w * k, rh = cam.h * k;
+  ctx.fillStyle = 'rgba(40,30,25,0.28)';
+  ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.rect(rx, ry, rw, rh); ctx.fill('evenodd');
+  ctx.lineWidth = 2; ctx.strokeStyle = '#f06449'; ctx.strokeRect(rx, ry, rw, rh);
+}
+
+function centerOnMinimap(event) {
+  const grid = appState.grid, cam = appState.camera;
+  if (!grid) return;
+  const rect = elements.minimap.getBoundingClientRect();
+  const scale = minimapScale();
+  const bx = (event.clientX - rect.left) / scale, by = (event.clientY - rect.top) / scale;
+  cam.ox = cam.w / 2 - bx * cam.cell;
+  cam.oy = cam.h / 2 - by * cam.cell;
+  cam.fitted = false;
+  clampPan();
+  scheduleBeadRender();
+}
+
+function updateZoomLabel() {
+  if (!appState.grid) return;
+  elements.zoomLevel.textContent = `${Math.round(appState.camera.cell / fitCellSize() * 100)}%`;
+  elements.zoomFit.classList.toggle('is-active', appState.camera.fitted);
+}
+
+function updateStageInfo() {
+  const grid = appState.grid;
+  const info = elements.stageInfo;
+  const cellIndex = appState.hoverCell;
+  if (!grid || cellIndex < 0 || cellIndex >= grid.indices.length) {
+    info.textContent = tr(COARSE_POINTER.matches ? 'canvasHintTouch' : 'canvasHint');
+    info.classList.remove('has-cell');
+    return;
+  }
+  const x = cellIndex % grid.w, y = Math.floor(cellIndex / grid.w);
+  const index = grid.indices[cellIndex];
+  const entry = index === EMPTY_CELL ? null : grid.palette[index];
+  info.replaceChildren();
+  if (entry) {
+    const swatch = document.createElement('span'); swatch.className = 'stage-info-swatch'; swatch.style.backgroundColor = entry.hex;
+    info.appendChild(swatch);
+  }
+  info.append(`${tr('cellInfo', { x: x + 1, y: y + 1 })} · ${entry ? paletteLabel(entry) : tr('emptyCell')}`);
+  info.classList.add('has-cell');
+}
+
+function setHoverCell(cellIndex) {
+  if (cellIndex === appState.hoverCell) return;
+  appState.hoverCell = cellIndex;
+  updateStageInfo();
+  scheduleBeadRender();
+}
+
+function toggleFocusMode(force) {
+  const on = force == null ? !elements.resultSection.classList.contains('is-focus') : force;
+  elements.resultSection.classList.toggle('is-focus', on);
+  document.body.classList.toggle('workspace-focus', on);
+  elements.focusBtn.setAttribute('aria-pressed', String(on));
+  elements.focusBtn.textContent = on ? '✕' : '⛶';
+  requestAnimationFrame(() => { if (syncStageSize()) renderBeads(); });
 }
 
 function renderLegend() {
@@ -1553,6 +1819,8 @@ function setTool(tool) {
     button.setAttribute('aria-checked', String(active));
   });
   elements.beadCanvas.dataset.tool = tool;
+  elements.canvasStage.dataset.tool = tool;
+  if (appState.grid) scheduleBeadRender();
 }
 
 function resetEditHistory(grid) {
@@ -1569,18 +1837,25 @@ function setCell(grid, cellIndex, colorIndex) {
   if (previous !== EMPTY_CELL) grid.counts[previous]--;
   if (colorIndex !== EMPTY_CELL) grid.counts[colorIndex]++;
   grid.indices[cellIndex] = colorIndex;
+  if (grid === appState.pixels.grid) appState.pixels.dirty = true;
   return previous;
 }
 
-function cellFromEvent(event) {
-  const grid = appState.grid;
+function stagePoint(event) {
   const rect = elements.beadCanvas.getBoundingClientRect();
-  if (!grid || !rect.width || !rect.height) return -1;
-  const x = Math.floor((event.clientX - rect.left) / rect.width * grid.w);
-  const y = Math.floor((event.clientY - rect.top) / rect.height * grid.h);
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+function cellAt(point) {
+  const grid = appState.grid, cam = appState.camera;
+  if (!grid) return -1;
+  const x = Math.floor((point.x - cam.ox) / cam.cell);
+  const y = Math.floor((point.y - cam.oy) / cam.cell);
   if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) return -1;
   return y * grid.w + x;
 }
+
+function cellFromEvent(event) { return cellAt(stagePoint(event)); }
 
 function scheduleBeadRender() {
   if (appState.edit.renderQueued) return;
@@ -1664,10 +1939,70 @@ function stepHistory(fromStack, toStack, useFrom) {
 function undoEdit() { stepHistory(appState.edit.undo, appState.edit.redo, true); }
 function redoEdit() { stepHistory(appState.edit.redo, appState.edit.undo, false); }
 
+function cancelStroke() {
+  const stroke = appState.edit.stroke;
+  if (!stroke) return;
+  stroke.changes.forEach((previous, cellIndex) => setCell(appState.grid, cellIndex, previous));
+  appState.edit.stroke = null;
+  scheduleBeadRender();
+}
+
+function setPanningClass() {
+  elements.canvasStage.classList.toggle('is-panning', !!appState.gesture);
+  elements.canvasStage.classList.toggle('is-space', appState.spaceDown);
+}
+
+function startPinch() {
+  const [a, b] = Array.from(appState.pointers.values());
+  const cam = appState.camera;
+  appState.gesture = {
+    type: 'pinch', dist: Math.hypot(b.x - a.x, b.y - a.y) || 1,
+    mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cell: cam.cell, ox: cam.ox, oy: cam.oy
+  };
+  appState.hoverCell = -1;
+  setPanningClass();
+}
+
+function updatePinch() {
+  const g = appState.gesture;
+  const [a, b] = Array.from(appState.pointers.values());
+  if (!a || !b) return;
+  const cam = appState.camera;
+  const { min, max } = zoomLimits();
+  const dist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const cell = Math.min(max, Math.max(min, g.cell * dist / g.dist));
+  cam.ox = mid.x - (g.mid.x - g.ox) / g.cell * cell;
+  cam.oy = mid.y - (g.mid.y - g.oy) / g.cell * cell;
+  cam.cell = cell;
+  cam.fitted = false;
+  clampPan();
+  scheduleBeadRender();
+}
+
 function onCanvasPointerDown(event) {
+  if (!appState.grid) return;
+  const point = stagePoint(event);
+  appState.pointers.set(event.pointerId, point);
+  try { elements.beadCanvas.setPointerCapture(event.pointerId); } catch (_) {}
+  if (appState.pointers.size === 2) {
+    event.preventDefault();
+    cancelStroke();
+    startPinch();
+    return;
+  }
+  if (appState.pointers.size > 2 || event.button === 2) return;
   const tool = appState.edit.tool;
-  if (tool === 'view' || !appState.grid || isBusy() || event.button > 0) return;
-  const cellIndex = cellFromEvent(event);
+  if (event.button === 1 || appState.spaceDown || tool === 'view' || isBusy()) {
+    event.preventDefault();
+    const cam = appState.camera;
+    appState.gesture = { type: 'pan', pointerId: event.pointerId, sx: point.x, sy: point.y, ox: cam.ox, oy: cam.oy };
+    setPanningClass();
+    scheduleBeadRender();
+    return;
+  }
+  if (event.button !== 0) return;
+  const cellIndex = cellAt(point);
   if (cellIndex < 0) return;
   event.preventDefault();
   if (tool === 'picker') {
@@ -1680,16 +2015,31 @@ function onCanvasPointerDown(event) {
   } else if (tool === 'pen' || tool === 'eraser') {
     const color = tool === 'eraser' ? EMPTY_CELL : appState.edit.color;
     appState.edit.stroke = { changes: new Map(), last: cellIndex, pointerId: event.pointerId, color };
-    try { elements.beadCanvas.setPointerCapture(event.pointerId); } catch (_) {}
     paintStrokeCell(cellIndex);
     scheduleBeadRender();
   }
 }
 
 function onCanvasPointerMove(event) {
+  if (!appState.grid) return;
+  const point = stagePoint(event);
+  if (appState.pointers.has(event.pointerId)) appState.pointers.set(event.pointerId, point);
+  const gesture = appState.gesture;
+  if (gesture && gesture.type === 'pinch') { updatePinch(); return; }
+  if (gesture && gesture.type === 'pan') {
+    if (gesture.pointerId !== event.pointerId) return;
+    const cam = appState.camera;
+    cam.ox = gesture.ox + point.x - gesture.sx;
+    cam.oy = gesture.oy + point.y - gesture.sy;
+    cam.fitted = false;
+    clampPan();
+    scheduleBeadRender();
+    return;
+  }
+  const cellIndex = cellAt(point);
+  if (event.pointerType !== 'touch') setHoverCell(cellIndex);
   const stroke = appState.edit.stroke;
   if (!stroke || event.pointerId !== stroke.pointerId) return;
-  const cellIndex = cellFromEvent(event);
   if (cellIndex < 0 || cellIndex === stroke.last) return;
   paintStrokeLine(stroke.last, cellIndex);
   stroke.last = cellIndex;
@@ -1697,10 +2047,83 @@ function onCanvasPointerMove(event) {
 }
 
 function onCanvasPointerUp(event) {
+  appState.pointers.delete(event.pointerId);
+  const gesture = appState.gesture;
+  if (gesture && (gesture.type === 'pinch' ? appState.pointers.size < 2 : gesture.pointerId === event.pointerId)) {
+    appState.gesture = null;
+    setPanningClass();
+    scheduleBeadRender();
+  }
   const stroke = appState.edit.stroke;
   if (!stroke || event.pointerId !== stroke.pointerId) return;
   appState.edit.stroke = null;
+  if (event.type === 'pointercancel') { stroke.changes.forEach((previous, cellIndex) => setCell(appState.grid, cellIndex, previous)); scheduleBeadRender(); return; }
   commitEdit(stroke.changes);
+}
+
+function onCanvasWheel(event) {
+  if (!appState.grid) return;
+  event.preventDefault();
+  const cam = appState.camera;
+  let dx = event.deltaX, dy = event.deltaY;
+  if (event.deltaMode === 1) { dx *= 16; dy *= 16; } else if (event.deltaMode === 2) { dx *= cam.h; dy *= cam.h; }
+  const point = stagePoint(event);
+  // Trackpad pinch arrives as ctrl+wheel. Two-finger scrolling streams many small (or sideways) deltas,
+  // while a notched mouse wheel sends occasional large vertical steps: scroll pans, wheel zooms.
+  const now = performance.now();
+  if (!event.ctrlKey && (dx !== 0 || (dy !== 0 && Math.abs(dy) < 40))) appState.trackpadUntil = now + 400;
+  else if (appState.trackpadUntil > now) appState.trackpadUntil = now + 400;
+  const mouseWheel = event.deltaMode !== 0 || (!(appState.trackpadUntil > now) && dx === 0 && Math.abs(dy) >= 40);
+  if (event.ctrlKey || event.metaKey) zoomAt(Math.exp(-dy * 0.01), point.x, point.y);
+  else if (mouseWheel && !event.shiftKey) zoomAt(Math.exp(-dy * 0.0016), point.x, point.y);
+  else if (event.shiftKey && dx === 0) panBy(-dy, 0);
+  else panBy(-dx, -dy);
+}
+
+function isTypingTarget(target) {
+  return !!(target && target.closest && target.closest('input, select, textarea, [contenteditable="true"]'));
+}
+
+function onWorkspaceKeyDown(event) {
+  if (!appState.grid || elements.resultSection.hidden) return;
+  if (event.key === 'Escape' && elements.resultSection.classList.contains('is-focus')) { toggleFocusMode(false); return; }
+  if (isTypingTarget(event.target)) return;
+  const mod = event.ctrlKey || event.metaKey;
+  if (mod && !event.altKey) {
+    const key = event.key.toLowerCase();
+    if (key === 'z' && !event.shiftKey) { event.preventDefault(); undoEdit(); }
+    else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redoEdit(); }
+    return;
+  }
+  if (event.altKey) return;
+  const canvasFocused = document.activeElement === elements.beadCanvas;
+  if (event.code === 'Space' && (appState.stageHover || canvasFocused)) {
+    event.preventDefault();
+    if (!appState.spaceDown) { appState.spaceDown = true; setPanningClass(); }
+    return;
+  }
+  const workspaceActive = appState.stageHover || canvasFocused || elements.resultSection.classList.contains('is-focus') || elements.resultSection.contains(document.activeElement) || WIDE_LAYOUT.matches;
+  if (!workspaceActive || event.target.closest('a, button') && event.key === 'Enter') return;
+  const toolKeys = { v: 'view', h: 'view', b: 'pen', p: 'pen', g: 'fill', i: 'picker', e: 'eraser' };
+  const key = event.key.toLowerCase();
+  if (key === '+' || key === '=') { event.preventDefault(); zoomAt(1.25); }
+  else if (key === '-' || key === '_') { event.preventDefault(); zoomAt(0.8); }
+  else if (key === '0') { event.preventDefault(); fitView(); }
+  else if (toolKeys[key] && !isBusy()) { event.preventDefault(); setTool(toolKeys[key]); }
+  else if (canvasFocused && event.key.startsWith('Arrow')) {
+    event.preventDefault();
+    const step = event.shiftKey ? 200 : 60;
+    panBy(event.key === 'ArrowLeft' ? step : event.key === 'ArrowRight' ? -step : 0, event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0);
+  }
+}
+
+function updateToolTitles() {
+  toolButtons.forEach((button) => {
+    const label = button.querySelector('.tool-label');
+    const text = label ? label.textContent : button.textContent.trim();
+    button.title = `${text} (${button.dataset.shortcut})`;
+    button.setAttribute('aria-label', text);
+  });
 }
 
 function bindEditEvents() {
@@ -1719,13 +2142,40 @@ function bindEditEvents() {
   canvas.addEventListener('pointermove', onCanvasPointerMove);
   canvas.addEventListener('pointerup', onCanvasPointerUp);
   canvas.addEventListener('pointercancel', onCanvasPointerUp);
-  document.addEventListener('keydown', (event) => {
-    if (!appState.grid || !(event.ctrlKey || event.metaKey) || event.altKey) return;
-    if (event.target.closest && event.target.closest('input, select, textarea')) return;
-    const key = event.key.toLowerCase();
-    if (key === 'z' && !event.shiftKey) { event.preventDefault(); undoEdit(); }
-    else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redoEdit(); }
+  canvas.addEventListener('wheel', onCanvasWheel, { passive: false });
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  canvas.addEventListener('auxclick', (event) => { if (event.button === 1) event.preventDefault(); });
+  elements.canvasStage.addEventListener('pointerenter', () => { appState.stageHover = true; });
+  elements.canvasStage.addEventListener('pointerleave', () => { appState.stageHover = false; if (!appState.edit.stroke) setHoverCell(-1); });
+  // Gesture events are Safari-only; stop them from zooming the whole page while pinching the canvas.
+  ['gesturestart', 'gesturechange'].forEach((type) => elements.canvasStage.addEventListener(type, (event) => event.preventDefault()));
+  let minimapDrag = null;
+  elements.minimap.addEventListener('pointerdown', (event) => {
+    event.preventDefault(); event.stopPropagation();
+    minimapDrag = event.pointerId;
+    try { elements.minimap.setPointerCapture(event.pointerId); } catch (_) {}
+    centerOnMinimap(event);
   });
+  elements.minimap.addEventListener('pointermove', (event) => { if (minimapDrag === event.pointerId) centerOnMinimap(event); });
+  ['pointerup', 'pointercancel'].forEach((type) => elements.minimap.addEventListener(type, () => { minimapDrag = null; }));
+  elements.minimap.addEventListener('wheel', onCanvasWheel, { passive: false });
+  document.addEventListener('keydown', onWorkspaceKeyDown);
+  document.addEventListener('keyup', (event) => { if (event.code === 'Space' && appState.spaceDown) { appState.spaceDown = false; setPanningClass(); } });
+  window.addEventListener('blur', () => { appState.spaceDown = false; setPanningClass(); });
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => { if (appState.grid && syncStageSize()) renderBeads(); }).observe(elements.canvasStage);
+  } else {
+    window.addEventListener('resize', () => { if (appState.grid && syncStageSize()) renderBeads(); });
+  }
+  elements.focusBtn.addEventListener('click', () => toggleFocusMode());
+  elements.zoomFit.addEventListener('click', () => fitView());
+  elements.reconvertBtn.addEventListener('click', convert);
+  elements.settingsJump.addEventListener('click', () => {
+    if (elements.resultSection.classList.contains('is-focus')) toggleFocusMode(false);
+    document.querySelector('.settings').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  updateToolTitles();
+  updateStageInfo();
   setTool('view');
 }
 
@@ -1934,12 +2384,14 @@ function bindEvents() {
   elements.convertBtn.addEventListener('click', convert);
   elements.highlightLines.addEventListener('input', () => { elements.highlightVal.textContent = elements.highlightLines.value; if (appState.grid) renderBeads(); });
   [elements.showGrid, elements.showSymbols, elements.beadShape].forEach((input) => input.addEventListener('change', renderBeads));
-  elements.zoomIn.addEventListener('click', () => { appState.view.zoom = Math.min(appState.view.zoom * 1.25, 8); renderBeads(); });
-  elements.zoomOut.addEventListener('click', () => { appState.view.zoom = Math.max(appState.view.zoom / 1.25, 0.25); renderBeads(); });
+  elements.zoomIn.addEventListener('click', () => zoomAt(1.25));
+  elements.zoomOut.addEventListener('click', () => zoomAt(0.8));
   elements.downloadPng.addEventListener('click', downloadPng);
   elements.downloadPdf.addEventListener('click', downloadPdf);
   document.addEventListener('bead:languagechange', () => {
     Object.keys(appState.messages).forEach(renderMessage);
+    updateToolTitles();
+    updateStageInfo();
     if (appState.grid) { renderLegend(); renderStatistics(); populatePaintColors(); setPaintColor(appState.edit.color); }
     syncControls();
   });
@@ -1979,16 +2431,14 @@ async function loadPatternFromUrl() {
     appState.grid = grid;
     appState.dataStale = false;
     resetEditHistory(grid);
-    elements.resultSection.hidden = false;
-    const wrapperWidth = $('canvasWrapper').clientWidth - 4;
-    appState.view.zoom = Math.max(0.25, Math.min(2, wrapperWidth > 0 ? wrapperWidth / (w * 16) : 1));
+    showWorkspace();
     renderAll();
     populatePaintColors();
     setPaintColor(appState.edit.color);
     setMessage('resultStatus', 'patternLoaded', { name: grid.pattern });
     syncControls();
     // Jump straight to the loaded pattern; the visitor arrived here to see it.
-    elements.resultSection.scrollIntoView({ block: 'start' });
+    scrollToWorkspace();
   } catch (error) {
     setMessage('uploadError', errorKey(error, 'errorPatternLoad'), null, true);
   }
