@@ -604,6 +604,7 @@ Object.assign(I18N['ko'], { footerPatterns: '무료 도안' });
 
 // Canvas workspace (zoom, pan, focus mode).
 Object.assign(I18N['zh-TW'], {
+  cleanupNoise: '去除單顆雜點', cleanupNoiseHint: '把周圍都不同色的單顆珠子換成鄰近顏色，拼起來更乾淨',
   canvasHintTouch: '雙指縮放・拖曳移動畫面',
   reconvertBtn: '套用新設定', settingsJump: '調整設定', ariaZoomControls: '畫布縮放控制',
   zoomInLabel: '放大 (+)', zoomOutLabel: '縮小 (−)', zoomFit: '全覽', zoomFitTitle: '縮放到看見整張圖紙 (0)',
@@ -611,6 +612,7 @@ Object.assign(I18N['zh-TW'], {
   cellInfo: '第 {y} 列・第 {x} 欄', emptyCell: '空白'
 });
 Object.assign(I18N['zh-CN'], {
+  cleanupNoise: '去除单颗杂点', cleanupNoiseHint: '把周围都不同色的单颗珠子换成邻近颜色，拼起来更干净',
   canvasHintTouch: '双指缩放・拖动移动画面',
   reconvertBtn: '应用新设置', settingsJump: '调整设置', ariaZoomControls: '画布缩放控制',
   zoomInLabel: '放大 (+)', zoomOutLabel: '缩小 (−)', zoomFit: '全览', zoomFitTitle: '缩放到看见整张图纸 (0)',
@@ -618,6 +620,7 @@ Object.assign(I18N['zh-CN'], {
   cellInfo: '第 {y} 行・第 {x} 列', emptyCell: '空白'
 });
 Object.assign(I18N.en, {
+  cleanupNoise: 'Remove stray beads', cleanupNoiseHint: 'Replace single beads that match none of their neighbours with a nearby color',
   canvasHintTouch: 'Pinch to zoom · drag to move',
   reconvertBtn: 'Apply new settings', settingsJump: 'Settings', ariaZoomControls: 'Canvas zoom controls',
   zoomInLabel: 'Zoom in (+)', zoomOutLabel: 'Zoom out (−)', zoomFit: 'Fit', zoomFitTitle: 'Zoom to show the whole pattern (0)',
@@ -625,6 +628,7 @@ Object.assign(I18N.en, {
   cellInfo: 'Row {y}, Col {x}', emptyCell: 'Empty'
 });
 Object.assign(I18N.ja, {
+  cleanupNoise: '孤立したビーズを除去', cleanupNoiseHint: '周りと色が違う1粒だけのビーズを近くの色に置き換えます',
   canvasHintTouch: 'ピンチで拡大縮小・ドラッグで移動',
   reconvertBtn: '新しい設定で再変換', settingsJump: '設定を変更', ariaZoomControls: 'キャンバスのズーム操作',
   zoomInLabel: '拡大 (+)', zoomOutLabel: '縮小 (−)', zoomFit: '全体', zoomFitTitle: '図案全体が見えるように表示 (0)',
@@ -632,6 +636,7 @@ Object.assign(I18N.ja, {
   cellInfo: '{y} 行目・{x} 列目', emptyCell: '空白'
 });
 Object.assign(I18N.ko, {
+  cleanupNoise: '외딴 비즈 제거', cleanupNoiseHint: '주변과 색이 다른 한 알짜리 비즈를 주변 색으로 바꿉니다',
   canvasHintTouch: '핀치로 확대/축소 · 드래그로 이동',
   reconvertBtn: '새 설정 적용', settingsJump: '설정 변경', ariaZoomControls: '캔버스 확대/축소 컨트롤',
   zoomInLabel: '확대 (+)', zoomOutLabel: '축소 (−)', zoomFit: '전체', zoomFitTitle: '도안 전체가 보이도록 맞추기 (0)',

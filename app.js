@@ -1022,65 +1022,92 @@ function hexToRgb(hex) {
   return [r, g, b];
 }
 
-function colorDistance(c1, c2) {
-  const dr = c1[0] - c2[0];
-  const dg = c1[1] - c2[1];
-  const db = c1[2] - c2[2];
-  const rMean = (c1[0] + c2[0]) / 2;
-  return Math.sqrt((2 + rMean/256)*dr*dr + 4*dg*dg + (2 + (255-rMean)/256)*db*db);
+// ===== Perceptual color matching (CIELAB) =====
+function srgbToLinear(channel) {
+  const c = channel / 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
-function findClosestColor(rgb, palette) {
-  let minDist = Infinity;
-  let closest = palette[0];
-  for (const color of palette) {
-    const d = colorDistance(rgb, hexToRgb(color.hex));
-    if (d < minDist) { minDist = d; closest = color; }
-  }
-  return closest;
+function rgbToLab(rgb) {
+  const r = srgbToLinear(rgb[0]), g = srgbToLinear(rgb[1]), b = srgbToLinear(rgb[2]);
+  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const x = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047);
+  const y = f(r * 0.2126 + g * 0.7152 + b * 0.0722);
+  const z = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
 }
 
-// ===== Median Cut Color Quantization =====
-function medianCut(pixels, numColors) {
-  if (pixels.length === 0) return [];
-  function getRange(bucket) {
-    let rMin=255,rMax=0,gMin=255,gMax=0,bMin=255,bMax=0;
-    for (const p of bucket) {
-      rMin=Math.min(rMin,p[0]); rMax=Math.max(rMax,p[0]);
-      gMin=Math.min(gMin,p[1]); gMax=Math.max(gMax,p[1]);
-      bMin=Math.min(bMin,p[2]); bMax=Math.max(bMax,p[2]);
+function labDistanceSq(a, b) {
+  const dl = a[0] - b[0], da = a[1] - b[1], db = a[2] - b[2];
+  return dl * dl + da * da + db * db;
+}
+
+const paletteLabCache = new Map();
+function paletteLab(palette) {
+  let labs = paletteLabCache.get(palette);
+  if (!labs) { labs = palette.map((entry) => rgbToLab(hexToRgb(entry.hex))); paletteLabCache.set(palette, labs); }
+  return labs;
+}
+
+function nearestPaletteIndex(lab, labs, candidates) {
+  let best = candidates[0], bestDistance = Infinity;
+  for (let k = 0; k < candidates.length; k++) {
+    const distance = labDistanceSq(lab, labs[candidates[k]]);
+    if (distance < bestDistance) { bestDistance = distance; best = candidates[k]; }
+  }
+  return best;
+}
+
+// Pick at most `maxColors` palette entries. Repeatedly drop the entry that matters least:
+// few beads AND close to another kept color. Small but distinct details (eyes, outlines) survive.
+function choosePaletteSubset(counts, labs, maxColors) {
+  const kept = [];
+  counts.forEach((count, index) => { if (count > 0) kept.push(index); });
+  const weight = Float64Array.from(counts);
+  while (kept.length > maxColors) {
+    let worst = -1, worstScore = Infinity, worstTarget = -1;
+    for (let i = 0; i < kept.length; i++) {
+      let nearest = -1, nearestDistance = Infinity;
+      for (let j = 0; j < kept.length; j++) {
+        if (i === j) continue;
+        const distance = labDistanceSq(labs[kept[i]], labs[kept[j]]);
+        if (distance < nearestDistance) { nearestDistance = distance; nearest = kept[j]; }
+      }
+      const score = weight[kept[i]] * Math.sqrt(nearestDistance);
+      if (score < worstScore) { worstScore = score; worst = i; worstTarget = nearest; }
     }
-    return {rRange:rMax-rMin, gRange:gMax-gMin, bRange:bMax-bMin};
+    weight[worstTarget] += weight[kept[worst]];
+    kept.splice(worst, 1);
   }
-  function splitBucket(bucket) {
-    const range = getRange(bucket);
-    let channel;
-    if (range.rRange >= range.gRange && range.rRange >= range.bRange) channel = 0;
-    else if (range.gRange >= range.bRange) channel = 1;
-    else channel = 2;
-    bucket.sort((a,b) => a[channel] - b[channel]);
-    const mid = Math.floor(bucket.length / 2);
-    return [bucket.slice(0, mid), bucket.slice(mid)];
-  }
-  let buckets = [pixels];
-  while (buckets.length < numColors) {
-    let maxRange = -1, maxIdx = 0;
-    for (let i = 0; i < buckets.length; i++) {
-      if (buckets[i].length < 2) continue;
-      const range = getRange(buckets[i]);
-      const total = range.rRange + range.gRange + range.bRange;
-      if (total > maxRange) { maxRange = total; maxIdx = i; }
+  return kept;
+}
+
+// Replace beads that share no color with any of their 8 neighbours by the most common neighbour color.
+function removeIsolatedCells(indices, w, h) {
+  const source = indices.slice();
+  const tally = new Map();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const cell = y * w + x, color = source[cell];
+      tally.clear();
+      let same = false;
+      for (let dy = -1; dy <= 1 && !same; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if ((!dx && !dy) || nx < 0 || nx >= w) continue;
+          const neighbour = source[ny * w + nx];
+          if (neighbour === color) { same = true; break; }
+          tally.set(neighbour, (tally.get(neighbour) || 0) + 1);
+        }
+      }
+      if (same || !tally.size) continue;
+      let best = color, bestCount = 0;
+      tally.forEach((count, value) => { if (count > bestCount) { bestCount = count; best = value; } });
+      indices[cell] = best;
     }
-    if (maxRange <= 0) break;
-    const [a, b] = splitBucket(buckets[maxIdx]);
-    buckets.splice(maxIdx, 1, a, b);
   }
-  return buckets.filter(b => b.length > 0).map(bucket => {
-    let r=0,g=0,b=0;
-    for (const p of bucket) { r+=p[0]; g+=p[1]; b+=p[2]; }
-    const n = bucket.length;
-    return [Math.round(r/n), Math.round(g/n), Math.round(b/n)];
-  });
 }
 
 // ===== Editor application =====
@@ -1099,7 +1126,7 @@ const elements = {
   previewImg: $('previewImg'), uploadLoading: $('uploadLoading'), uploadStatus: $('uploadStatus'),
   uploadError: $('uploadError'), boardSize: $('boardSize'), customSizeGroup: $('customSizeGroup'),
   customWidth: $('customWidth'), customHeight: $('customHeight'), colorCount: $('colorCount'),
-  colorCountVal: $('colorCountVal'), brand: $('brand'), imageFit: $('imageFit'), backgroundColor: $('backgroundColor'),
+  colorCountVal: $('colorCountVal'), brand: $('brand'), imageFit: $('imageFit'), backgroundColor: $('backgroundColor'), cleanupNoise: $('cleanupNoise'),
   beadShape: $('beadShape'), showGrid: $('showGrid'), showSymbols: $('showSymbols'), highlightLines: $('highlightLines'),
   highlightVal: $('highlightVal'), convertBtn: $('convertBtn'), resultSection: $('resultSection'),
   resultStatus: $('resultStatus'), beadCanvas: $('beadCanvas'), legendItems: $('legendItems'), beadCount: $('beadCount'),
@@ -1137,7 +1164,7 @@ const EMPTY_CELL = 255; // a cell with no bead (palette indices never reach 255)
 
 const dataControls = [
   elements.fileInput, elements.boardSize, elements.customWidth, elements.customHeight,
-  elements.colorCount, elements.brand, elements.imageFit, elements.backgroundColor
+  elements.colorCount, elements.brand, elements.imageFit, elements.backgroundColor, elements.cleanupNoise
 ];
 const viewControls = [
   elements.beadShape, elements.showGrid, elements.showSymbols, elements.highlightLines,
@@ -1286,7 +1313,8 @@ function getDataOptions() {
     colorCount: Number.parseInt(elements.colorCount.value, 10),
     brand: elements.brand.value,
     fit: elements.imageFit.value,
-    background: elements.backgroundColor.value
+    background: elements.backgroundColor.value,
+    cleanup: elements.cleanupNoise.checked
   };
 }
 
@@ -1331,38 +1359,59 @@ function compositeAndDraw(ctx, image, options) {
   ctx.drawImage(image, x, y, drawW, drawH);
 }
 
-function generateGrid(image, options) {
+// Average each bead's whole source area instead of sampling a few pixels, so thin lines and
+// textures don't turn into random speckles when a large photo shrinks to a small board.
+function sampleAreaColors(image, options) {
+  const { w, h } = options;
+  const maxFactor = Math.floor(Math.sqrt(4_000_000 / (w * h)));
+  const sourceFactor = Math.ceil(Math.max(image.naturalWidth / w, image.naturalHeight / h));
+  const k = Math.max(1, Math.min(8, maxFactor, sourceFactor));
   const scratch = document.createElement('canvas');
-  scratch.width = options.w;
-  scratch.height = options.h;
+  scratch.width = w * k;
+  scratch.height = h * k;
   const ctx = scratch.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw appError('errorCanvas');
-  compositeAndDraw(ctx, image, options);
-  const imageData = ctx.getImageData(0, 0, options.w, options.h).data;
-  const pixels = new Array(options.w * options.h);
-  for (let i = 0, p = 0; i < imageData.length; i += 4, p++) pixels[p] = [imageData[i], imageData[i + 1], imageData[i + 2]];
-  const quantized = medianCut(pixels.slice(), options.colorCount);
-  if (!quantized.length) throw appError('errorCanvas');
-  const palette = BRAND_PALETTES[options.brand];
-  const paletteIndices = new Map();
-  quantized.forEach((color) => {
-    const closest = findClosestColor(color, palette);
-    paletteIndices.set(color.join(','), palette.indexOf(closest));
-  });
-  const indices = new Uint8Array(options.w * options.h);
-  const counts = new Uint32Array(palette.length);
-  for (let i = 0; i < pixels.length; i++) {
-    let minDistance = Infinity;
-    let closest = quantized[0];
-    for (const candidate of quantized) {
-      const distance = colorDistance(pixels[i], candidate);
-      if (distance < minDistance) { minDistance = distance; closest = candidate; }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  compositeAndDraw(ctx, image, { ...options, w: w * k, h: h * k });
+  const data = ctx.getImageData(0, 0, scratch.width, scratch.height).data;
+  const rowStride = scratch.width * 4;
+  const colors = new Array(w * h);
+  const area = k * k;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0;
+      for (let yy = 0; yy < k; yy++) {
+        let offset = (y * k + yy) * rowStride + x * k * 4;
+        for (let xx = 0; xx < k; xx++, offset += 4) { r += data[offset]; g += data[offset + 1]; b += data[offset + 2]; }
+      }
+      colors[y * w + x] = [r / area, g / area, b / area];
     }
-    const paletteIndex = paletteIndices.get(closest.join(','));
-    indices[i] = paletteIndex;
-    counts[paletteIndex]++;
   }
-  return { w: options.w, h: options.h, indices, counts, palette, brand: options.brand, options: { ...options } };
+  return colors;
+}
+
+function generateGrid(image, options) {
+  const { w, h } = options;
+  const palette = BRAND_PALETTES[options.brand];
+  const labs = paletteLab(palette);
+  const pixels = sampleAreaColors(image, options).map(rgbToLab);
+  const everyColor = palette.map((_, index) => index);
+  const indices = new Uint8Array(w * h);
+  const firstCounts = new Uint32Array(palette.length);
+  for (let i = 0; i < pixels.length; i++) {
+    indices[i] = nearestPaletteIndex(pixels[i], labs, everyColor);
+    firstCounts[indices[i]]++;
+  }
+  const kept = choosePaletteSubset(firstCounts, labs, options.colorCount);
+  if (!kept.length) throw appError('errorCanvas');
+  if (kept.length < firstCounts.filter(Boolean).length) {
+    for (let i = 0; i < pixels.length; i++) indices[i] = nearestPaletteIndex(pixels[i], labs, kept);
+  }
+  if (options.cleanup) removeIsolatedCells(indices, w, h);
+  const counts = new Uint32Array(palette.length);
+  for (let i = 0; i < indices.length; i++) counts[indices[i]]++;
+  return { w, h, indices, counts, palette, brand: options.brand, options: { ...options } };
 }
 
 async function convert() {
@@ -2379,7 +2428,7 @@ function bindEvents() {
     markDataStale();
   };
   elements.boardSize.addEventListener('change', () => { updateCustomSizeVisibility(); onDataChange(); });
-  [elements.customWidth, elements.customHeight, elements.colorCount, elements.brand, elements.imageFit, elements.backgroundColor].forEach((input) => { input.addEventListener('input', onDataChange); input.addEventListener('change', onDataChange); });
+  [elements.customWidth, elements.customHeight, elements.colorCount, elements.brand, elements.imageFit, elements.backgroundColor, elements.cleanupNoise].forEach((input) => { input.addEventListener('input', onDataChange); input.addEventListener('change', onDataChange); });
   elements.convertBtn.addEventListener('click', convert);
   elements.highlightLines.addEventListener('input', () => { elements.highlightVal.textContent = elements.highlightLines.value; if (appState.grid) renderBeads(); });
   [elements.showGrid, elements.showSymbols, elements.beadShape].forEach((input) => input.addEventListener('change', renderBeads));
